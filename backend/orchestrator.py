@@ -1,9 +1,10 @@
 """
 오케스트레이터 (Orchestrator)
 ------------------------------
-조사자 → 편집장 → 작가 → 검토자 순서로 4개 에이전트를 지휘하는 '지휘자' 코드입니다.
+조사자 → 편집장 → 작가(기사별) → 검토자 → 카드뉴스 생성 순서로 에이전트를 지휘하는 '지휘자' 코드입니다.
 - 실행 순서 강제 / 단계 산출물(파일) 전달
-- 검토자 반려 시 작가 재작성 루프 1회 (PROJECT_NOTES 2.8)
+- 검토자 반려 시 작가 재작성 루프 1회 (항목 파일 수정 → 자동 재조립, PROJECT_NOTES 2.8)
+- 카드뉴스 JSON(최종 배포 산출물)은 검토가 끝난 최종 원고에서 기사별로 생성
 - 각 단계를 타임스탬프 로그 파일로 기록 (PROJECT_NOTES 2.10)
 - 마지막에 자동 발송하지 않고, 최종 원고 + 검토 로그 경로를 제시하고 멈춤 (Human-in-the-loop)
 
@@ -200,21 +201,38 @@ async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
     if output_missing("review.md"):
         return result
 
-    # 피드백 루프 1회 — REVISE 인 경우: 작가 재작성 → 검토자 재검토 → 종료
+    # 피드백 루프 1회 — REVISE 인 경우: 작가가 항목 파일 수정 → 재조립 → 검토자 재검토 → 종료
     verdict = read_verdict(run_dir)
     logger("orchestrator", f"검토 판정: {verdict}")
     if verdict == "REVISE":
-        logger("orchestrator", "반려 → 작가 재작성 1회 진행")
+        logger("orchestrator", "반려 → 작가 재작성 1회 진행 (항목 파일 수정 후 재조립)")
         await run_agent(
             "writer",
-            "review.md 의 지적 사항을 반영해 draft.md 를 수정하세요.",
+            "review.md 의 지적 사항을 반영해 해당 항목 원고 파일(item_XX.md)들을 수정하세요. "
+            "draft.md 는 직접 고치지 마세요 — 수정된 항목 파일로 자동 재조립됩니다.",
             run_dir, logger,
         )
+        assemble_draft(run_dir, items)
+        logger("orchestrator", "수정된 항목 파일로 draft.md 재조립 완료")
         await run_agent(
             "reviewer",
             "수정된 draft.md 를 다시 검증하고 review.md 를 갱신하세요. (재작성 기회는 더 이상 없습니다. 남은 문제는 로그로만 남기세요.)",
             run_dir, logger,
         )
+
+    # ⑤ 카드뉴스 — 검토가 끝난 '최종' 항목 원고를 기반으로 기사별 카드 JSON 생성 (최종 배포 산출물)
+    #    (검토 이전에 만들면 반려·수정 시 카드가 낡아지므로, 반드시 검토 루프가 끝난 뒤에 생성한다)
+    for idx in range(1, len(items) + 1):
+        await run_agent(
+            "writer",
+            f"item_{idx:02d}.md 는 검토를 마친 최종 원고입니다. 이 원고에 있는 내용만으로, "
+            f"역할 지침의 '카드뉴스 JSON 산출' 규격에 따라 card_{idx:02d}.json 을 작성하세요. "
+            f"이 항목의 번호는 {idx:02d} 입니다.",
+            run_dir, logger,
+        )
+        if output_missing(f"card_{idx:02d}.json"):
+            return result
+        logger("orchestrator", f"카드 진행: {idx}/{len(items)}건 완료")
 
     logger("orchestrator", "파이프라인 종료")
 
@@ -222,7 +240,9 @@ async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
     draft = run_dir / "draft.md"
     review = run_dir / "review.md"
     logger("orchestrator",
-           f"검토 대기: 최종 원고={draft}, 검토 로그={review} — 내용을 확인하고 발송 여부를 결정하세요. (자동 발송 없음)")
+           f"검토 대기: 최종 원고={draft}, 검토 로그={review}, 카드 JSON={len(items)}건(card_NN.json) "
+           f"— 내용을 확인하고 발송 여부를 결정하세요. (자동 발송 없음) "
+           f"카드 렌더: python tools/build_cardnews.py {run_dir}\\card_01.json")
 
     result["draft"] = str(draft)
     result["review"] = str(review)
