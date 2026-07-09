@@ -1,0 +1,27 @@
+{
+  "category": "정책",
+  "article_no": "02",
+  "week_label": "7월 2주",
+  "eyebrow": "트럼프, AI 행정명령 「EO 14409」 서명",
+  "headline": ["美, AI 규제 대신", "'자율'을 택했다"],
+  "subhead": "라이선싱·사전심사 없이, 민관 협력으로 혁신과 안보를 동시에 — 사전 규제 중심의 EU와 정반대 노선",
+  "points": [
+    {
+      "title": "의무 라이선싱·사전심사 신설 안 함",
+      "desc": "'비규제(non-regulatory)' 노선을 명문화, 강제 규제 대신 민관 협력으로 안보 확보"
+    },
+    {
+      "title": "프론티어 모델은 자율 제출·조기 검토",
+      "desc": "NSA가 60일 내 기밀 벤치마킹 체계 마련 · 공개 30일 전 정부 공유를 유도"
+    },
+    {
+      "title": "'AI 사이버보안 클리어링하우스' 설립",
+      "desc": "연방 시스템 방어 우선 + AI 악용 범죄는 현행 연방법으로 우선 기소"
+    }
+  ],
+  "source": [
+    "출처 : The White House, \"Promoting Advanced Artificial Intelligence Innovation and Security (EO 14409)\"",
+    "원문 : whitehouse.gov/presidential-actions",
+    "발간일 : 26.02.06."
+  ]
+}

@@ -6,3 +6,4 @@ data/tests/
 logs/
 .venv/
 .claude/settings.local.json
+tools/cardnews/out/

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 폰트: Pretendard(원 디자인과 동일). 오프라인/차단 시 맑은 고딕으로 대체됨 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #101319; }
+
+  /* ── 카드 본체 (1080 × 1240) ───────────────────────────── */
+  .card {
+    width: 1080px; height: 1240px; position: relative; overflow: hidden;
+    background: linear-gradient(158deg, #F7F8FC 0%, #EDF1FA 46%, #E6EDFB 72%, #F1F4FA 100%);
+    font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif;
+    color: #17203A; display: flex; flex-direction: column;
+  }
+
+  /* 은은한 광원(ambient glow) 두 개 */
+  .glow-tr { position: absolute; top: -220px; right: -180px; width: 640px; height: 640px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(62,109,232,0.14) 0%, rgba(62,109,232,0) 68%); }
+  .glow-bl { position: absolute; bottom: -260px; left: -200px; width: 700px; height: 700px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(38,178,255,0.10) 0%, rgba(38,178,255,0) 70%); }
+  /* 격자 오버레이 */
+  .grid { position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(rgba(43,68,128,0.05) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(43,68,128,0.05) 1px, transparent 1px);
+    background-size: 72px 72px; }
+
+  /* 헤더 */
+  .header { position: relative; display: flex; align-items: center; justify-content: space-between;
+    padding: 52px 64px 0 64px; }
+  .header .brand { display: flex; align-items: center; gap: 14px; }
+  .header .dot { width: 12px; height: 12px; background: {{ accent }}; box-shadow: 0 0 14px {{ accent_glow }}; }
+  .header .cat { display: flex; align-items: baseline; gap: 10px;
+    font-size: 22px; font-weight: 800; letter-spacing: 0.14em; color: #33415E; }
+  .header .week { font-size: 19px; font-weight: 600; letter-spacing: 0.06em; color: #5A6B8C;
+    border: 1px solid rgba(90,107,140,0.4); padding: 8px 20px; border-radius: 999px; }
+
+  /* 헤드라인 블록 */
+  .headline { position: relative; padding: 72px 64px 0 64px; }
+  .headline .eyebrow { font-size: 26px; font-weight: 700; color: {{ accent }};
+    letter-spacing: 0.02em; margin-bottom: 22px; }
+  .headline .title { font-size: 76px; font-weight: 800; line-height: 1.22;
+    letter-spacing: -0.02em; color: #131C33; text-wrap: balance; }
+  .headline .sub { margin-top: 26px; font-size: 27px; font-weight: 500; line-height: 1.5;
+    color: #4C5B77; text-wrap: pretty; }
+
+  /* ── 핵심 포인트 영역 ──────────────────────────────────
+     헤드라인과 하단 출처 사이의 남는 세로 공간을 통째로 차지하고(flex:1),
+     그 안에서 포인트 상자들이 개수와 무관하게 공간을 균등하게 나눠 갖는다(flex:1). */
+  .points { position: relative; flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column; gap: 18px;
+    padding: 56px 64px 40px 64px; }
+  .point { flex: 1 1 0; min-height: 0; display: flex; gap: 24px; align-items: flex-start;
+    background: rgba(255,255,255,0.82); border: 1px solid rgba(43,68,128,0.12);
+    border-radius: 18px; padding: 26px 30px; box-shadow: 0 8px 24px rgba(23,42,90,0.06); }
+  .point .no { flex: none; width: 44px; height: 44px; display: grid; place-items: center;
+    border-radius: 12px; background: {{ accent_soft }}; color: {{ accent }}; font-size: 22px; font-weight: 800; }
+  .point .body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .point .pt-title { font-size: 27px; font-weight: 750; color: #1B2540; }
+  .point .pt-desc { font-size: 22px; font-weight: 450; line-height: 1.5; color: #5A6880; text-wrap: pretty; }
+
+  /* 개수별 타이포 단계 — 상자 크기는 flex가 자동 분배하지만,
+     글자 크기는 CSS가 스스로 줄이지 못하므로 렌더 시점에 아는 개수로 단계를 정한다. */
+  .points.roomy .point { padding: 32px 36px; }                 /* 1~2개: 여유 */
+  .points.roomy .pt-title { font-size: 30px; }
+  .points.roomy .pt-desc { font-size: 24px; }
+  .points.tight .point { padding: 20px 26px; border-radius: 16px; gap: 18px; }   /* 4개 */
+  .points.tight .pt-title { font-size: 23px; }
+  .points.tight .pt-desc { font-size: 19px; }
+  .points.dense { gap: 12px; }                                  /* 5개 이상: 최밀 */
+  .points.dense .point { padding: 16px 22px; border-radius: 14px; gap: 16px; }
+  .points.dense .point .no { width: 36px; height: 36px; font-size: 18px; border-radius: 10px; }
+  .points.dense .pt-title { font-size: 20px; }
+  .points.dense .pt-desc { font-size: 17px; line-height: 1.4; }
+
+  /* 하단 출처 메타 */
+  .footer { position: relative; margin-top: auto; padding: 0 64px 44px 64px; }
+  .footer .inner { border-top: 1px solid rgba(43,68,128,0.16); padding-top: 22px;
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+  .footer .src { font-size: 13px; line-height: 1.7; color: #8792A8; white-space: nowrap; }
+  .footer .logo { flex: none; font-size: 16px; font-weight: 700; letter-spacing: 0.1em; color: #8792A8; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="glow-tr"></div>
+  <div class="glow-bl"></div>
+  <div class="grid"></div>
+
+  <div class="header">
+    <div class="brand">
+      <div class="dot"></div>
+      <div class="cat"><span>{{ category }}</span><span>·</span><span>{{ article_no }}</span></div>
+    </div>
+    {% if week_label %}<div class="week">{{ week_label }}</div>{% endif %}
+  </div>
+
+  <div class="headline">
+    {% if eyebrow %}<div class="eyebrow">{{ eyebrow }}</div>{% endif %}
+    <div class="title">{% for line in headline_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+    {% if subhead %}<div class="sub">{{ subhead }}</div>{% endif %}
+  </div>
+
+  <div class="points {{ density }}" data-count="{{ points | length }}">
+    {% for pt in points %}
+    <div class="point">
+      <div class="no">{{ loop.index }}</div>
+      <div class="body">
+        <div class="pt-title">{{ pt.title }}</div>
+        <div class="pt-desc">{{ pt.desc }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="footer">
+    <div class="inner">
+      <div class="src">{% for line in source_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+      <div class="logo">AI TREND BRIEF</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
