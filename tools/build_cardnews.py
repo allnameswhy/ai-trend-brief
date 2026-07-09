@@ -110,8 +110,8 @@ def export_png(html_path: Path, png_path: Path) -> bool:
             "--default-background-color=00000000",
             "--virtual-time-budget=3000",       # 웹폰트 로드 대기
             f"--user-data-dir={udd}",
-            f"--screenshot={png_path}",
-            html_path.as_uri(),
+            f"--screenshot={png_path.resolve()}",
+            html_path.resolve().as_uri(),   # 상대 경로 입력도 안전하게 (as_uri는 절대 경로 필수)
         ]
         subprocess.run(cmd, capture_output=True, timeout=120)
     return png_path.exists()

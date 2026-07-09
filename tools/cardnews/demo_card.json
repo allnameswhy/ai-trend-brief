@@ -2,7 +2,7 @@
   "category": "정책",
   "article_no": "02",
   "week_label": "7월 2주",
-  "eyebrow": "트럼프, AI 행정명령 「EO 14409」 서명",
+  "eyebrow": "트럼프, 'AI 혁신·안보' 행정명령 서명",
   "headline": ["美, AI 규제 대신", "'자율'을 택했다"],
   "subhead": "라이선싱·사전심사 없이, 민관 협력으로 혁신과 안보를 동시에 — 사전 규제 중심의 EU와 정반대 노선",
   "points": [
@@ -20,8 +20,8 @@
     }
   ],
   "source": [
-    "출처 : The White House, \"Promoting Advanced Artificial Intelligence Innovation and Security (EO 14409)\"",
+    "출처 : The White House(Jun., 2026), Promoting Advanced Artificial Intelligence Innovation and Security",
     "원문 : whitehouse.gov/presidential-actions",
-    "발간일 : 26.02.06."
+    "발간일 : 26.06.02."
   ]
 }
