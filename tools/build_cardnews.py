@@ -8,11 +8,10 @@
 (PDF 파이프라인과 동일한 Edge를 재사용 — 새 라이브러리 없음)
 
 사용법:
-    python tools/build_cardnews.py                     # 데모 카드(demo_card.json) 렌더
-    python tools/build_cardnews.py 내콘텐츠.json         # 임의 콘텐츠 렌더
+    python tools/build_cardnews.py 내콘텐츠.json         # 콘텐츠 렌더
     python tools/build_cardnews.py 내콘텐츠.json --out 폴더 --no-png
 
-콘텐츠 JSON 스키마: demo_card.json 참고.
+콘텐츠 JSON 스키마: tools/cardnews/card_schema.md 참고.
 """
 import argparse
 import json
@@ -25,7 +24,6 @@ from jinja2 import Environment, FileSystemLoader
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE_NAME = "card_template.html.j2"
-DEMO = HERE / "cardnews" / "demo_card.json"
 # 테스트 산출물은 종류 불문 data/tests/ 아래에 모은다 (프로젝트 규칙)
 DEFAULT_OUT = HERE.parent / "data" / "tests" / "cardnews"
 
@@ -48,41 +46,27 @@ def hex_to_rgba(hex_color: str, alpha: float) -> str:
 
 
 def as_lines(value) -> list:
-    """문자열이면 한 줄짜리 목록으로, 목록이면 그대로 반환. (headline·source 공용)"""
+    """문자열이면 한 줄짜리 목록으로, 목록이면 그대로 반환. (source용)"""
     if isinstance(value, list):
         return value
     return [value] if value else []
 
 
-def density_class(point_count: int) -> str:
-    """포인트 개수에 따른 타이포 단계. 상자 크기는 CSS flex가 알아서 나누지만
-    글자 크기는 스스로 줄지 않으므로, 렌더 시점에 아는 개수로 단계를 정해준다."""
-    if point_count <= 2:
-        return "roomy"
-    if point_count == 3:
-        return ""        # 기본 (원 디자인 그대로)
-    if point_count == 4:
-        return "tight"
-    return "dense"       # 5개 이상
-
-
 def render_html(card: dict) -> str:
     category = card.get("category", "정책")
     accent = ACCENT_MAP.get(category, "#3E6DE8")
-    points = card.get("points", [])
 
     context = {
         "category": category,
         "accent": accent,
         "accent_glow": hex_to_rgba(accent, 0.55),
-        "accent_soft": hex_to_rgba(accent, 0.10),
+        "accent_hl": hex_to_rgba(accent, 0.20),   # 핵심 구절 형광펜 하이라이트 색
         "article_no": str(card.get("article_no", "")),
         "week_label": card.get("week_label", ""),
-        "eyebrow": card.get("eyebrow", ""),
-        "headline_lines": as_lines(card.get("headline", "")),
+        "title": card.get("title", ""),
         "subhead": card.get("subhead", ""),
-        "points": points,
-        "density": density_class(len(points)),
+        # points 항목: {pre, key, post, sub?} — key는 문장 속 하이라이트 구절, sub는 보조 설명(선택)
+        "points": card.get("points", []),
         "source_lines": as_lines(card.get("source", "")),
     }
     return JINJA_ENV.get_template(TEMPLATE_NAME).render(context)
@@ -138,8 +122,7 @@ def build_one(card_path: Path, out_dir: Path, make_png: bool) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="AI 브리프 카드뉴스 빌더")
-    ap.add_argument("content", nargs="?", default=str(DEMO),
-                    help="카드 콘텐츠 JSON (기본: demo_card.json)")
+    ap.add_argument("content", help="카드 콘텐츠 JSON (규격: tools/cardnews/card_schema.md)")
     ap.add_argument("--out", default=str(DEFAULT_OUT), help="출력 폴더")
     ap.add_argument("--no-png", action="store_true", help="HTML만 생성(PNG 건너뜀)")
     args = ap.parse_args()

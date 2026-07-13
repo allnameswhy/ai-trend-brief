@@ -40,50 +40,42 @@
   .header .week { font-size: 19px; font-weight: 600; letter-spacing: 0.06em; color: #5A6B8C;
     border: 1px solid rgba(90,107,140,0.4); padding: 8px 20px; border-radius: 999px; }
 
-  /* 헤드라인 블록 */
-  .headline { position: relative; padding: 72px 64px 0 64px; }
-  .headline .eyebrow { font-size: 26px; font-weight: 700; color: {{ accent }};
-    letter-spacing: 0.02em; margin-bottom: 22px; }
-  .headline .title { font-size: 76px; font-weight: 800; line-height: 1.22;
-    letter-spacing: -0.02em; color: #131C33; text-wrap: balance; }
-  .headline .sub { margin-top: 26px; font-size: 27px; font-weight: 500; line-height: 1.5;
-    color: #4C5B77; text-wrap: pretty; word-break: keep-all; overflow-wrap: break-word; }
+  /* 헤드라인 블록 — 한 줄 제목 + 부제 + 강조색 구분선 */
+  .headline { position: relative; padding: 60px 64px 0 64px; }
+  .headline .title { font-size: 64px; font-weight: 800; line-height: 1.18;
+    letter-spacing: -0.02em; color: #131C33; white-space: nowrap; }
+  .headline .sub { margin-top: 20px; font-size: 27px; font-weight: 500; line-height: 1.3;
+    color: #4C5B77; text-wrap: pretty; word-break: keep-all; }
+  .headline .rule { margin-top: 22px; display: flex; align-items: center; }
+  .headline .rule-accent { width: 56px; height: 3px; background: {{ accent }}; }
+  .headline .rule-line { flex: 1; height: 1px; background: rgba(43,68,128,0.14); }
 
-  /* ── 핵심 포인트 영역 ──────────────────────────────────
-     헤드라인과 하단 출처 사이의 남는 세로 공간을 차지하되(flex:1),
-     각 상자는 자기 내용만큼만 높아지고(패딩 일정), 상자 묶음은 그 영역의 세로 중앙에 놓인다. */
-  .points { position: relative; flex: 1 1 auto; min-height: 0;
-    display: flex; flex-direction: column; gap: 18px; justify-content: center;
-    padding: 56px 64px 40px 64px; }
-  .point { flex: 0 0 auto; display: flex; gap: 24px; align-items: flex-start;
-    background: rgba(255,255,255,0.82); border: 1px solid rgba(43,68,128,0.12);
-    border-radius: 18px; padding: 26px 30px; box-shadow: 0 8px 24px rgba(23,42,90,0.06); }
-  .point .no { flex: none; width: 44px; height: 44px; display: grid; place-items: center;
-    border-radius: 12px; background: {{ accent_soft }}; color: {{ accent }}; font-size: 22px; font-weight: 800; }
-  .point .body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-  .point .pt-title { font-size: 27px; font-weight: 750; color: #1B2540; }
-  .point .pt-desc { font-size: 22px; font-weight: 450; line-height: 1.5; color: #5A6880; text-wrap: pretty; }
+  /* ── 핵심 포인트 — 불렛 + 전체 문장 (문장 속 핵심 구절은 형광펜 하이라이트) ── */
+  .points { position: relative; display: flex; flex-direction: column; gap: 35px;
+    padding: 40px 64px 0 64px; }
+  .point { display: flex; flex-direction: column; gap: 11px; }
+  .pt-main { display: flex; gap: 22px; }
+  .pt-main .bullet { flex: none; margin-top: 14px; width: 10px; height: 10px;
+    border-radius: 3px; background: {{ accent }}; }
+  .pt-main .text { font-size: 24px; font-weight: 450; line-height: 1.5; color: #3D4A66;
+    word-break: keep-all; text-align: justify; text-justify: inter-character; }
+  .pt-main .text strong { font-weight: 750; color: #131C33; padding: 0 2px;
+    background: linear-gradient(transparent 68%, {{ accent_hl }} 68%); }
+  /* 보조 설명(선택) — 대시 + 작은 글자 */
+  .pt-sub { display: flex; gap: 14px; align-items: flex-start; padding-left: 32px; }
+  .pt-sub .dash { flex: none; margin-top: 16px; width: 12px; height: 2px; background: #55627D; }
+  .pt-sub .text { font-size: 22px; font-weight: 450; line-height: 1.5; color: #48556F;
+    word-break: keep-all; text-align: justify; text-justify: inter-character; }
 
-  /* 개수별 타이포 단계 — 상자 크기는 flex가 자동 분배하지만,
-     글자 크기는 CSS가 스스로 줄이지 못하므로 렌더 시점에 아는 개수로 단계를 정한다. */
-  .points.roomy .point { padding: 32px 36px; }                 /* 1~2개: 여유 */
-  .points.roomy .pt-title { font-size: 30px; }
-  .points.roomy .pt-desc { font-size: 24px; }
-  .points.tight .point { padding: 20px 26px; border-radius: 16px; gap: 18px; }   /* 4개 */
-  .points.tight .pt-title { font-size: 23px; }
-  .points.tight .pt-desc { font-size: 19px; }
-  .points.dense { gap: 12px; }                                  /* 5개 이상: 최밀 */
-  .points.dense .point { padding: 16px 22px; border-radius: 14px; gap: 16px; }
-  .points.dense .point .no { width: 36px; height: 36px; font-size: 18px; border-radius: 10px; }
-  .points.dense .pt-title { font-size: 20px; }
-  .points.dense .pt-desc { font-size: 17px; line-height: 1.4; }
-
-  /* 하단 출처 메타 */
+  /* 하단 출처 메타 + AI 작성 고지 */
   .footer { position: relative; margin-top: auto; padding: 0 64px 44px 64px; }
-  .footer .inner { border-top: 1px solid rgba(43,68,128,0.16); padding-top: 22px;
-    display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+  .footer .inner { border-top: 1px solid rgba(43,68,128,0.16); padding-top: 22px; }
+  .footer .meta-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
   .footer .src { font-size: 13px; line-height: 1.7; color: #8792A8; white-space: nowrap; }
-  .footer .logo { flex: none; font-size: 16px; font-weight: 700; letter-spacing: 0.1em; color: #8792A8; }
+  .footer .logo { flex: none; align-self: flex-start;
+    font-size: 16px; font-weight: 700; letter-spacing: 0.1em; color: #8792A8; }
+  .footer .disclaimer { margin-top: 16px; font-size: 12px; line-height: 1.55; color: #A6AFC0;
+    word-break: keep-all; text-align: justify; text-justify: inter-character; }
 </style>
 </head>
 <body>
@@ -101,27 +93,35 @@
   </div>
 
   <div class="headline">
-    {% if eyebrow %}<div class="eyebrow">{{ eyebrow }}</div>{% endif %}
-    <div class="title">{% for line in headline_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+    <div class="title">{{ title }}</div>
     {% if subhead %}<div class="sub">{{ subhead }}</div>{% endif %}
+    <div class="rule"><div class="rule-accent"></div><div class="rule-line"></div></div>
   </div>
 
-  <div class="points {{ density }}" data-count="{{ points | length }}">
+  <div class="points">
     {% for pt in points %}
     <div class="point">
-      <div class="no">{{ loop.index }}</div>
-      <div class="body">
-        <div class="pt-title">{{ pt.title }}</div>
-        <div class="pt-desc">{{ pt.desc }}</div>
+      <div class="pt-main">
+        <div class="bullet"></div>
+        <div class="text">{{ pt.pre }}{% if pt.key %}<strong>{{ pt.key }}</strong>{% endif %}{{ pt.post }}</div>
       </div>
+      {% if pt.sub %}
+      <div class="pt-sub">
+        <div class="dash"></div>
+        <div class="text">{{ pt.sub }}</div>
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
 
   <div class="footer">
     <div class="inner">
-      <div class="src">{% for line in source_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
-      <div class="logo">AI TREND BRIEF</div>
+      <div class="meta-row">
+        <div class="src">{% for line in source_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+        <div class="logo">AI TREND BRIEF</div>
+      </div>
+      <div class="disclaimer">본 발간물은 생성형 AI로 초안을 작성한 뒤 담당자의 검수를 거쳐 발간되었습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 인용을 위해서는 원문을 확인해 주시기 바랍니다.</div>
     </div>
   </div>
 </div>
