@@ -69,6 +69,16 @@ ALLOWED_TOOLS = {
     "reviewer": ["WebSearch", "WebFetch", "Read", "Write", f"Bash({CARD_CHECK_CMD}:*)"],
 }
 
+# 에이전트별 모델 지정 (2026-07-13 확정 — 미지정 시 SDK 기본 모델을 따라가 비용을 예측할 수 없음)
+# 가격(1M 토큰당 입력/출력): Opus 4.8 $5/$25, Sonnet 5 $3/$15 (2026-08까지 $2/$10)
+# 글쓰기 품질이 중요한 작가·검토자는 Opus, 수집·선별 위주인 조사자·편집장은 Sonnet
+MODELS = {
+    "researcher": "claude-sonnet-5",
+    "editor": "claude-sonnet-5",
+    "writer": "claude-opus-4-8",
+    "reviewer": "claude-opus-4-8",
+}
+
 
 def load_role(agent_name: str) -> str:
     """.claude/agents/{name}.md 에서 YAML frontmatter(--- ... ---)를 걷어내고
@@ -97,6 +107,7 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
     options = ClaudeAgentOptions(
         system_prompt=load_role(agent_name),   # 에이전트의 역할 = .md 본문
         allowed_tools=ALLOWED_TOOLS[agent_name],
+        model=MODELS[agent_name],              # 에이전트별 모델 고정 (위 MODELS 참조)
         permission_mode="acceptEdits",         # 파일 쓰기 자동 승인 (비대화형 실행용)
         cwd=str(run_dir),                      # 에이전트의 작업 폴더 = 이번 run 폴더
         max_turns=50,                          # 무한 루프 방지 안전장치
