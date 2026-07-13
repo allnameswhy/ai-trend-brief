@@ -33,14 +33,20 @@ from backend.orchestrator import run_agent, PROJECT_ROOT  # noqa: E402
 RUNS_DIR = PROJECT_ROOT / "data" / "runs"
 # 테스트 산출물은 종류 불문 data/tests/ 아래에 모은다 (writer 테스트는 그 하위 writer/)
 TESTS_DIR = PROJECT_ROOT / "data" / "tests" / "writer"
+# 카드 규격의 단일 원천 — writer.md 에 없으므로 지시문에 전문을 첨부한다 (오케스트레이터와 동일 방식)
+CARD_SCHEMA_PATH = PROJECT_ROOT / "tools" / "cardnews" / "card_schema.md"
 
 TASK_TEMPLATE = """single_item.json 에 담긴 기사 1건을 번역·요약해 브리프 항목 원고 1건을 작성하고,
-item.md 파일에 저장하세요. 원고 완성 후에는 역할 지침의 '카드뉴스 JSON 산출' 규격에 따라
+item.md 파일에 저장하세요. 원고 완성 후에는 아래 카드 규격에 따라
 card.json 파일도 작성하세요. (이 기사의 항목 번호는 {article_no} 입니다.)
 
 - 기존 발간물의 톤·문체·구성 참고 자료(읽기 전용): {ref_paths}
 - 원문 무료 공개 범위가 좁아 분량을 채우기 어려우면 내용을 지어내지 말고, 항목 끝에
   `> [편집 참고: 분량 부족 — 사유]` 형식의 표시를 남기세요.
+
+--- 카드 규격 (원천: tools/cardnews/card_schema.md) ---
+
+{card_spec}
 """
 
 
@@ -117,7 +123,8 @@ def main() -> None:
 
     refs = find_ref_texts()
     ref_paths = ", ".join(str(p) for p in refs) if refs else "(없음 — 참고 자료 생략)"
-    task = TASK_TEMPLATE.format(ref_paths=ref_paths, article_no=f"{args.item:02d}")
+    task = TASK_TEMPLATE.format(ref_paths=ref_paths, article_no=f"{args.item:02d}",
+                                card_spec=CARD_SCHEMA_PATH.read_text(encoding="utf-8"))
 
     def logger(stage, message):
         print(f"[{datetime.now():%H:%M:%S}] {stage:8s} | {message}", flush=True)

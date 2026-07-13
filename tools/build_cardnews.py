@@ -3,7 +3,7 @@
 카드뉴스 빌더 — 『AI 브리프 카드뉴스』 디자인(1080×1240)을 실제 데이터로 렌더링한다.
 
 원 디자인은 Claude Design 캔버스 전용 컴포넌트(.dc.html)라 로컬에서 그대로 실행되지 않는다.
-이 스크립트는 같은 시안을 순수 HTML/CSS 템플릿(card_template.html)으로 옮긴 뒤,
+이 스크립트는 같은 시안을 순수 HTML/CSS 템플릿(card_template.html.j2)으로 옮긴 뒤,
 콘텐츠 JSON을 끼워 넣어 HTML을 만들고, Edge 헤드리스로 PNG까지 뽑아낸다.
 (PDF 파이프라인과 동일한 Edge를 재사용 — 새 라이브러리 없음)
 

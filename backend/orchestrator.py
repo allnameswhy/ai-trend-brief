@@ -206,6 +206,10 @@ async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
     logger("orchestrator", f"검토 판정: {verdict}")
     if verdict == "REVISE":
         logger("orchestrator", "반려 → 작가 재작성 1회 진행 (항목 파일 수정 후 재조립)")
+        # 재작성 전 항목 원고를 기억해 두었다가, 실제로 바뀐 항목만 재검토시킨다
+        # (수정 안 된 항목은 1차 검토를 통과한 상태 그대로이므로 재검증 불필요 — 토큰 절약)
+        item_files = [f"item_{idx:02d}.md" for idx in range(1, len(items) + 1)]
+        before = {name: (run_dir / name).read_text(encoding="utf-8") for name in item_files}
         await run_agent(
             "writer",
             "review.md 의 지적 사항을 반영해 해당 항목 원고 파일(item_XX.md)들을 수정하세요. "
@@ -214,20 +218,34 @@ async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
         )
         assemble_draft(run_dir, items)
         logger("orchestrator", "수정된 항목 파일로 draft.md 재조립 완료")
-        await run_agent(
-            "reviewer",
-            "수정된 draft.md 를 다시 검증하고 review.md 를 갱신하세요. (재작성 기회는 더 이상 없습니다. 남은 문제는 로그로만 남기세요.)",
-            run_dir, logger,
-        )
+        changed = [name for name in item_files
+                   if (run_dir / name).read_text(encoding="utf-8") != before[name]]
+        logger("orchestrator", f"수정 감지된 항목: {', '.join(changed) if changed else '(없음)'}")
+        if changed:
+            recheck_task = (
+                f"반려 후 작가가 다음 항목 원고만 수정했습니다: {', '.join(changed)}. "
+                "이 항목들만 다시 검증하고 review.md 를 갱신하세요. 수정되지 않은 항목은 재검증하지 않습니다. "
+                "(재작성 기회는 더 이상 없습니다. 남은 문제는 로그로만 남기세요.)"
+            )
+        else:
+            recheck_task = (
+                "수정된 draft.md 를 다시 검증하고 review.md 를 갱신하세요. "
+                "(재작성 기회는 더 이상 없습니다. 남은 문제는 로그로만 남기세요.)"
+            )
+        await run_agent("reviewer", recheck_task, run_dir, logger)
 
     # ⑤ 카드뉴스 — 검토가 끝난 '최종' 항목 원고를 기반으로 기사별 카드 JSON 생성 (최종 배포 산출물)
     #    (검토 이전에 만들면 반려·수정 시 카드가 낡아지므로, 반드시 검토 루프가 끝난 뒤에 생성한다)
+    # 카드 규격은 writer.md 에 싣지 않고 카드 지시문에만 첨부한다
+    # (원고 작성 세션 10회까지 규격을 실어 보내지 않기 위함 — 토큰 절약, 단일 원천: card_schema.md)
+    card_spec = (PROJECT_ROOT / "tools" / "cardnews" / "card_schema.md").read_text(encoding="utf-8")
     for idx in range(1, len(items) + 1):
         await run_agent(
             "writer",
             f"item_{idx:02d}.md 는 검토를 마친 최종 원고입니다. 이 원고에 있는 내용만으로, "
-            f"역할 지침의 '카드뉴스 JSON 산출' 규격에 따라 card_{idx:02d}.json 을 작성하세요. "
-            f"이 항목의 번호는 {idx:02d} 입니다.",
+            f"아래 카드 규격에 따라 card_{idx:02d}.json 을 작성하세요. "
+            f"이 항목의 번호는 {idx:02d} 입니다.\n\n"
+            f"--- 카드 규격 (원천: tools/cardnews/card_schema.md) ---\n\n{card_spec}",
             run_dir, logger,
         )
         if output_missing(f"card_{idx:02d}.json"):
