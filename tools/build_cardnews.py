@@ -10,12 +10,13 @@
 사용법:
     python tools/build_cardnews.py 내콘텐츠.json         # 콘텐츠 렌더
     python tools/build_cardnews.py 내콘텐츠.json --out 폴더 --no-png
-    python tools/build_cardnews.py 내콘텐츠.json --check  # 렌더 없이 넘침(레이아웃) 검사만
+    python tools/build_cardnews.py 내콘텐츠.json --check  # 기계 검사만 (자수 규격 + 렌더 실측 넘침)
 
 콘텐츠 JSON 스키마: tools/cardnews/card_schema.md 참고.
 """
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -126,24 +127,119 @@ def check_layout(card: dict) -> dict | None:
     return json.loads(m.group(1).decode("utf-8")) if m else None
 
 
-def run_check(card_path: Path) -> int:
-    """넘침 검사 결과를 출력하고 종료 코드를 돌려준다 (0=통과, 2=불합격)."""
-    card = json.loads(card_path.read_text(encoding="utf-8"))
+# ── 자수 규격 검사 ─────────────────────────────────────────────
+# (렌더 없이 0초로 판정하는 1차 검사. 실측 검사와 함께 card_problems 로 묶어 쓴다)
+
+def weighted_len(text: str) -> float:
+    """환산 자수 — 한글·한자·전각 1자, 공백 0.3자, 영문·숫자·부호 0.6자.
+    (실측 자폭 비율: 24px 기준 한글 20.7px, 영문 12.8px≈0.62, 공백 5.9px≈0.29)"""
+    total = 0.0
+    for c in text:
+        if c.isspace():
+            total += 0.3
+        elif ord(c) > 0x2E7F:   # 한글·한자·전각 문자
+            total += 1.0
+        else:
+            total += 0.6
+    return total
+
+
+def est_lines(weighted: float) -> int:
+    """문장 환산 자수 → 예상 줄수. 한 줄 용량 ≈ 44자(폭 920px ÷ 한글 20.7px),
+    단어 단위 줄바꿈 여유를 둬 42자로 나눈다. card_schema.md의 환산표와 동일."""
+    return max(1, math.ceil(weighted / 42))
+
+
+def validate_card(card: dict) -> list[str]:
+    """card_schema.md(v2) 규격 위반 목록을 돌려준다. 빈 목록이면 합격.
+    자수·개수만 검사한다 — 실제 넘침은 check_layout(렌더 실측)이 판정."""
+    errors = []
+
+    def need(cond: bool, msg: str) -> None:
+        if not cond:
+            errors.append(msg)
+
+    need(card.get("category") in ("정책", "기술", "윤리"), "category는 정책/기술/윤리 중 하나")
+    need(bool(re.fullmatch(r"\d{2}", str(card.get("article_no", "")))), "article_no는 두 자리 숫자")
+    need(bool(re.fullmatch(r"\d{1,2}월 \d주", card.get("week_label", ""))), "week_label은 'M월 N주' 형식")
+
+    title = card.get("title", "")
+    need(bool(title) and weighted_len(title) <= 17,
+         f"title은 환산 17자 이하(현재 {weighted_len(title):.1f}자) — 한 줄 고정이라 넘치면 잘림")
+
+    # 분량은 최대값만 검사한다 — 내용이 적어 본문·푸터 사이가 비는 것은 허용된 디자인
+    subhead_w = weighted_len(card.get("subhead", ""))
+    need(subhead_w <= 78, f"subhead는 환산 78자 이하(현재 {subhead_w:.1f}자)")
+
+    points = card.get("points", [])
+    need(1 <= len(points) <= 5, f"points는 최대 5개(현재 {len(points)}개)")
+    total_lines = 0
+    sub_count = 0
+    for i, pt in enumerate(points, 1):
+        key, post = pt.get("key", ""), pt.get("post", "")
+        sentence = pt.get("pre", "") + key + (post if key else "")
+        sw = weighted_len(sentence)
+        need(0 < sw <= 126,
+             f"point {i} 문장(pre+key+post)은 환산 126자 이하(현재 {sw:.1f}자)")
+        total_lines += est_lines(sw)
+        if key:
+            kw = weighted_len(key)
+            need(kw <= 25, f"point {i} key는 환산 25자 이하(현재 {kw:.1f}자)")
+        else:
+            need(not post, f"point {i}: key가 없으면 post도 쓰지 않는다(문장 전체를 pre에)")
+        # sub는 문자열 하나 또는 배열 — 보조가 늘면 그만큼 포인트(문장 줄수)를 줄이면 된다
+        subs = pt.get("sub", "") or []
+        if isinstance(subs, str):
+            subs = [subs]
+        for j, sub in enumerate(subs, 1):
+            sub_count += 1
+            total_lines += 1
+            need(weighted_len(sub) <= 46,
+                 f"point {i} sub {j}는 환산 46자(한 줄) 이하(현재 {weighted_len(sub):.1f}자)")
+    # 보조 한 줄(44px)은 문장 한 줄(36px)보다 약간 비싸서, 보조가 많으면 한도를 한 줄 줄인다
+    line_budget = 13 if sub_count >= 4 else 14
+    need(total_lines <= line_budget,
+         f"본문 예상 줄수 합계(문장 줄+보조)는 {line_budget}줄 이하(현재 {total_lines}줄, 보조 {sub_count}개) — 카드에서 넘침")
+
+    source = card.get("source", [])
+    need(isinstance(source, list) and len(source) == 3, "source는 정확히 3줄")
+    if isinstance(source, list) and len(source) == 3:
+        need(source[0].startswith("원문 제목 : "), "source 1줄은 '원문 제목 : '으로 시작")
+        need(len(source[0]) <= 100, f"source 1줄은 100자 이하(현재 {len(source[0])}자) — 한 줄 고정")
+        need(bool(re.fullmatch(r"발간처\(발간일\) : .+\(\d{2}\.\d{2}\.\d{2}\.\)", source[1])),
+             "source 2줄은 '발간처(발간일) : 매체(YY.MM.DD.)' 형식")
+        need(bool(re.match(r"URL : (?!https?://).+", source[2])), "source 3줄은 'URL : '로 시작(프로토콜 생략)")
+    return errors
+
+
+def card_problems(card_path: Path) -> list[str]:
+    """자수 규격(validate_card) + 렌더 실측(check_layout)을 합친 종합 기계 판정.
+    빈 목록이면 합격. 오케스트레이터·테스트 하네스가 공용으로 쓴다."""
+    try:
+        card = json.loads(Path(card_path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return [f"JSON 형식 오류: {e}"]
+    problems = validate_card(card)
+    if problems:
+        return problems          # 자수부터 맞춰야 실측이 의미 있으므로 여기서 반환
     r = check_layout(card)
     if r is None:
-        print("  ! Edge를 찾지 못했거나 측정 실패 — 검사 불가", file=sys.stderr)
-        return 3
-    problems = []
+        return []                # Edge 없음 — 자수 검사 통과로 갈음
     if r["bottom_overflow"] > 0:
-        problems.append(f"내용이 카드 아래로 {r['bottom_overflow']}px 넘침 (분량 초과 — 하단이 잘림)")
+        problems.append(f"실측 결과 내용이 카드 아래로 {r['bottom_overflow']}px 넘침 — 분량을 줄일 것")
     if r["title_overflow"] > 0:
-        problems.append(f"제목이 {r['title_overflow']}px 잘림 (한 줄 한도 초과)")
-    print(f"  레이아웃: 하단 넘침 {r['bottom_overflow']}px, 본문~푸터 여백 {r['gap']}px, 제목 초과 {r['title_overflow']}px")
+        problems.append(f"실측 결과 제목이 {r['title_overflow']}px 잘림 — 제목을 더 짧게")
+    return problems
+
+
+def run_check(card_path: Path) -> int:
+    """기계 검사(자수 규격 + 렌더 실측) 결과를 출력하고 종료 코드를 돌려준다 (0=통과, 2=불합격)."""
+    problems = card_problems(card_path)
     if problems:
         for p in problems:
             print(f"  불합격: {p}")
         return 2
-    print("  넘침 검사 통과")
+    print("  기계 검사 통과")
     return 0
 
 
@@ -193,7 +289,7 @@ def main() -> None:
     ap.add_argument("content", help="카드 콘텐츠 JSON (규격: tools/cardnews/card_schema.md)")
     ap.add_argument("--out", default=str(DEFAULT_OUT), help="출력 폴더")
     ap.add_argument("--no-png", action="store_true", help="HTML만 생성(PNG 건너뜀)")
-    ap.add_argument("--check", action="store_true", help="렌더 대신 넘침(레이아웃) 검사만 수행")
+    ap.add_argument("--check", action="store_true", help="렌더 대신 기계 검사만 수행 (자수 규격 + 렌더 실측)")
     args = ap.parse_args()
 
     card_path = Path(args.content)
@@ -201,7 +297,7 @@ def main() -> None:
         sys.exit(f"콘텐츠 파일을 찾을 수 없습니다: {card_path}")
 
     if args.check:
-        print(f"카드 넘침 검사: {card_path.name}")
+        print(f"카드 기계 검사: {card_path.name}")
         sys.exit(run_check(card_path))
 
     print(f"카드뉴스 빌드: {card_path.name}")

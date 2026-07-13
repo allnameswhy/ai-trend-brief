@@ -39,7 +39,7 @@ async def _run():
     running = True
     try:
         result = await run_pipeline(on_log=push_log)
-        log_queue.put_nowait(f"orchestrator | ✅ 완료 — 원고: {result['draft']}")
+        log_queue.put_nowait(f"orchestrator | ✅ 완료 — 카드 {len(result['cards'])}건: {result['run_dir']}")
     except Exception as e:
         log_queue.put_nowait(f"orchestrator | ❌ 오류: {e}")
     finally:
