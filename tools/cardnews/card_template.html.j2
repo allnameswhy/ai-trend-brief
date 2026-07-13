@@ -103,13 +103,17 @@
     <div class="point">
       <div class="pt-main">
         <div class="bullet"></div>
-        <div class="text">{{ pt.pre }}{% if pt.key %}<strong>{{ pt.key }}</strong>{% endif %}{{ pt.post }}</div>
+        {# key(하이라이트 구절)가 없으면 post도 생략 — 문장 전체를 pre에 쓴 경우 #}
+        <div class="text">{{ pt.pre }}{% if pt.key %}<strong>{{ pt.key }}</strong>{{ pt.post }}{% endif %}</div>
       </div>
+      {# sub는 문자열 하나 또는 배열(여러 보조 설명) 둘 다 허용 #}
       {% if pt.sub %}
+      {% for s in ([pt.sub] if pt.sub is string else pt.sub) %}
       <div class="pt-sub">
         <div class="dash"></div>
-        <div class="text">{{ pt.sub }}</div>
+        <div class="text">{{ s }}</div>
       </div>
+      {% endfor %}
       {% endif %}
     </div>
     {% endfor %}

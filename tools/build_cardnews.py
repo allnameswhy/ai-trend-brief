@@ -10,11 +10,13 @@
 사용법:
     python tools/build_cardnews.py 내콘텐츠.json         # 콘텐츠 렌더
     python tools/build_cardnews.py 내콘텐츠.json --out 폴더 --no-png
+    python tools/build_cardnews.py 내콘텐츠.json --check  # 렌더 없이 넘침(레이아웃) 검사만
 
 콘텐츠 JSON 스키마: tools/cardnews/card_schema.md 참고.
 """
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -79,6 +81,72 @@ def find_edge() -> str | None:
     return None
 
 
+# ── 넘침 검사 (--check) ────────────────────────────────────────
+# 글자 수 규칙은 근사치라, 최종 판정은 실제로 렌더해서 잰다 (기계 검사).
+# 카드에 측정 스크립트를 끼워 Edge 헤드리스로 열고 세 가지를 읽어 온다:
+#   bottom_overflow — 푸터 하단이 카드 높이(1240px)를 벗어난 픽셀 수. 0보다 크면 넘침(잘림).
+#                     (내용이 넘치면 본문·푸터 사이 여백이 음수가 되는 게 아니라
+#                      전체가 아래로 밀려 카드 밖에서 잘리므로, 이걸로 판정해야 한다)
+#   gap             — 본문 끝~푸터 시작 여백(참고용). 내용이 적어 여백이 커지는 것은 허용된 디자인.
+#   title_overflow  — 제목(한 줄 고정)이 잘린 픽셀 수.
+CHECK_JS = """
+<script>
+(async () => {
+  try { await document.fonts.ready; } catch (e) {}
+  await new Promise(r => setTimeout(r, 300));
+  const $ = s => document.querySelector(s);
+  const card = $('.card'), points = $('.points'), footer = $('.footer');
+  const inner = $('.footer .inner'), title = $('.headline .title');
+  const cardTop = card.getBoundingClientRect().top;
+  const m = {
+    bottom_overflow: Math.max(0, Math.round(footer.getBoundingClientRect().bottom - cardTop - 1240)),
+    gap: Math.round(inner.getBoundingClientRect().top - points.getBoundingClientRect().bottom),
+    title_overflow: title ? Math.max(0, title.scrollWidth - Math.round(title.getBoundingClientRect().width)) : 0,
+  };
+  document.title = 'CARDCHECK' + JSON.stringify(m);
+})();
+</script>
+"""
+
+
+def check_layout(card: dict) -> dict | None:
+    """카드를 실제로 렌더해 레이아웃 수치를 잰다. Edge가 없으면 None."""
+    edge = find_edge()
+    if not edge:
+        return None
+    html = render_html(card).replace("</body>", CHECK_JS + "</body>")
+    with tempfile.TemporaryDirectory() as udd:
+        page = Path(udd) / "check.html"
+        page.write_text(html, encoding="utf-8")
+        out = subprocess.run(
+            [edge, "--headless=new", "--disable-gpu", "--virtual-time-budget=6000",
+             f"--user-data-dir={udd}", "--dump-dom", page.as_uri()],
+            capture_output=True, timeout=90)
+    m = re.search(rb"<title>CARDCHECK(.*?)</title>", out.stdout, re.S)
+    return json.loads(m.group(1).decode("utf-8")) if m else None
+
+
+def run_check(card_path: Path) -> int:
+    """넘침 검사 결과를 출력하고 종료 코드를 돌려준다 (0=통과, 2=불합격)."""
+    card = json.loads(card_path.read_text(encoding="utf-8"))
+    r = check_layout(card)
+    if r is None:
+        print("  ! Edge를 찾지 못했거나 측정 실패 — 검사 불가", file=sys.stderr)
+        return 3
+    problems = []
+    if r["bottom_overflow"] > 0:
+        problems.append(f"내용이 카드 아래로 {r['bottom_overflow']}px 넘침 (분량 초과 — 하단이 잘림)")
+    if r["title_overflow"] > 0:
+        problems.append(f"제목이 {r['title_overflow']}px 잘림 (한 줄 한도 초과)")
+    print(f"  레이아웃: 하단 넘침 {r['bottom_overflow']}px, 본문~푸터 여백 {r['gap']}px, 제목 초과 {r['title_overflow']}px")
+    if problems:
+        for p in problems:
+            print(f"  불합격: {p}")
+        return 2
+    print("  넘침 검사 통과")
+    return 0
+
+
 def export_png(html_path: Path, png_path: Path) -> bool:
     edge = find_edge()
     if not edge:
@@ -125,11 +193,16 @@ def main() -> None:
     ap.add_argument("content", help="카드 콘텐츠 JSON (규격: tools/cardnews/card_schema.md)")
     ap.add_argument("--out", default=str(DEFAULT_OUT), help="출력 폴더")
     ap.add_argument("--no-png", action="store_true", help="HTML만 생성(PNG 건너뜀)")
+    ap.add_argument("--check", action="store_true", help="렌더 대신 넘침(레이아웃) 검사만 수행")
     args = ap.parse_args()
 
     card_path = Path(args.content)
     if not card_path.exists():
         sys.exit(f"콘텐츠 파일을 찾을 수 없습니다: {card_path}")
+
+    if args.check:
+        print(f"카드 넘침 검사: {card_path.name}")
+        sys.exit(run_check(card_path))
 
     print(f"카드뉴스 빌드: {card_path.name}")
     build_one(card_path, Path(args.out), make_png=not args.no_png)

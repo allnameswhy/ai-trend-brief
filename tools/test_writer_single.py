@@ -61,9 +61,30 @@ def find_ref_texts() -> list[Path]:
     return sorted((PROJECT_ROOT / "docs").glob("ref*_text.txt"))
 
 
+def weighted_len(text: str) -> float:
+    """환산 자수 — 한글·한자·전각 1자, 공백 0.3자, 영문·숫자·부호 0.6자.
+    (실측 자폭 비율: 24px 기준 한글 20.7px, 영문 12.8px≈0.62, 공백 5.9px≈0.29)"""
+    total = 0.0
+    for c in text:
+        if c.isspace():
+            total += 0.3
+        elif ord(c) > 0x2E7F:   # 한글·한자·전각 문자
+            total += 1.0
+        else:
+            total += 0.6
+    return total
+
+
+def est_lines(weighted: float) -> int:
+    """문장 환산 자수 → 예상 줄수. 한 줄 용량 ≈ 44자(폭 920px ÷ 한글 20.7px),
+    단어 단위 줄바꿈 여유를 둬 42자로 나눈다. card_schema.md의 환산표와 동일."""
+    import math
+    return max(1, math.ceil(weighted / 42))
+
+
 def validate_card(card: dict) -> list[str]:
-    """card_schema.md 규격 위반 목록을 돌려준다. 빈 목록이면 합격.
-    (사람 눈 대신 기계가 판정 — 규격은 tools/cardnews/card_schema.md 참조)"""
+    """card_schema.md(v2) 규격 위반 목록을 돌려준다. 빈 목록이면 합격.
+    자수·개수만 검사한다 — 실제 넘침은 build_cardnews.py --check(렌더 실측)가 판정."""
     errors = []
 
     def need(cond: bool, msg: str) -> None:
@@ -73,29 +94,53 @@ def validate_card(card: dict) -> list[str]:
     need(card.get("category") in ("정책", "기술", "윤리"), "category는 정책/기술/윤리 중 하나")
     need(bool(re.fullmatch(r"\d{2}", str(card.get("article_no", "")))), "article_no는 두 자리 숫자")
     need(bool(re.fullmatch(r"\d{1,2}월 \d주", card.get("week_label", ""))), "week_label은 'M월 N주' 형식")
-    need(0 < len(card.get("eyebrow", "")) <= 25, "eyebrow는 1~25자")
 
-    headline = card.get("headline")
-    need(isinstance(headline, list) and 1 <= len(headline) <= 2, "headline은 1~2줄 배열")
-    if isinstance(headline, list):
-        for i, line in enumerate(headline, 1):
-            need(len(line) <= 12, f"headline {i}줄이 12자 초과({len(line)}자)")
+    title = card.get("title", "")
+    need(bool(title) and weighted_len(title) <= 17,
+         f"title은 환산 17자 이하(현재 {weighted_len(title):.1f}자) — 한 줄 고정이라 넘치면 잘림")
 
-    need(0 < len(card.get("subhead", "")) <= 70, "subhead는 1~70자")
+    # 분량은 최대값만 검사한다 — 내용이 적어 본문·푸터 사이가 비는 것은 허용된 디자인
+    subhead_w = weighted_len(card.get("subhead", ""))
+    need(subhead_w <= 78, f"subhead는 환산 78자 이하(현재 {subhead_w:.1f}자)")
 
     points = card.get("points", [])
-    need(2 <= len(points) <= 5, f"points는 2~5개(현재 {len(points)}개)")
+    need(1 <= len(points) <= 5, f"points는 최대 5개(현재 {len(points)}개)")
+    total_lines = 0
+    sub_count = 0
     for i, pt in enumerate(points, 1):
-        need(0 < len(pt.get("title", "")) <= 22, f"point {i} title은 1~22자")
-        need(0 < len(pt.get("desc", "")) <= 60, f"point {i} desc는 1~60자")
+        key, post = pt.get("key", ""), pt.get("post", "")
+        sentence = pt.get("pre", "") + key + (post if key else "")
+        sw = weighted_len(sentence)
+        need(0 < sw <= 126,
+             f"point {i} 문장(pre+key+post)은 환산 126자 이하(현재 {sw:.1f}자)")
+        total_lines += est_lines(sw)
+        if key:
+            kw = weighted_len(key)
+            need(kw <= 25, f"point {i} key는 환산 25자 이하(현재 {kw:.1f}자)")
+        else:
+            need(not post, f"point {i}: key가 없으면 post도 쓰지 않는다(문장 전체를 pre에)")
+        # sub는 문자열 하나 또는 배열 — 보조가 늘면 그만큼 포인트(문장 줄수)를 줄이면 된다
+        subs = pt.get("sub", "") or []
+        if isinstance(subs, str):
+            subs = [subs]
+        for j, sub in enumerate(subs, 1):
+            sub_count += 1
+            total_lines += 1
+            need(weighted_len(sub) <= 46,
+                 f"point {i} sub {j}는 환산 46자(한 줄) 이하(현재 {weighted_len(sub):.1f}자)")
+    # 보조 한 줄(44px)은 문장 한 줄(36px)보다 약간 비싸서, 보조가 많으면 한도를 한 줄 줄인다
+    line_budget = 13 if sub_count >= 4 else 14
+    need(total_lines <= line_budget,
+         f"본문 예상 줄수 합계(문장 줄+보조)는 {line_budget}줄 이하(현재 {total_lines}줄, 보조 {sub_count}개) — 카드에서 넘침")
 
     source = card.get("source", [])
     need(isinstance(source, list) and len(source) == 3, "source는 정확히 3줄")
     if isinstance(source, list) and len(source) == 3:
-        need(bool(re.match(r"출처 : .+\((Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?, \d{4}\), .+", source[0])),
-             "source 1줄은 '출처 : 매체(Mon., YYYY), 제목' 형식")
-        need(source[1].startswith("원문 : "), "source 2줄은 '원문 : '으로 시작")
-        need(bool(re.fullmatch(r"발간일 : \d{2}\.\d{2}\.\d{2}\.", source[2])), "source 3줄은 '발간일 : YY.MM.DD.' 형식")
+        need(source[0].startswith("원문 제목 : "), "source 1줄은 '원문 제목 : '으로 시작")
+        need(len(source[0]) <= 100, f"source 1줄은 100자 이하(현재 {len(source[0])}자) — 한 줄 고정")
+        need(bool(re.fullmatch(r"발간처\(발간일\) : .+\(\d{2}\.\d{2}\.\d{2}\.\)", source[1])),
+             "source 2줄은 '발간처(발간일) : 매체(YY.MM.DD.)' 형식")
+        need(bool(re.match(r"URL : (?!https?://).+", source[2])), "source 3줄은 'URL : '로 시작(프로토콜 생략)")
     return errors
 
 
