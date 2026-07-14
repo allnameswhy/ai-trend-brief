@@ -10,7 +10,7 @@
   python tools/test_writer_single.py 3 --source data/runs/20260708_132347/selected.json
 
 동작 (2026-07-13 파이프라인 변경: 원고 없이 기사에서 카드 직접 작성):
-  1. selected.json 에서 지정한 기사 1건을 뽑아 data/tests/writer/<실행시각>/single_item.json 으로 저장
+  1. selected.json 에서 지정한 기사 1건을 뽑아 data/tests/<실행시각>/single_item.json 으로 저장
   2. 작가 에이전트를 그 폴더에서 실행 → card.json 생성
   3. 기계 검사(자수 규격 + 렌더 실측)로 합격 여부 판정
   → 작가 튜닝은 이 파일이 아니라 .claude/agents/writer.md 를 수정하면 된다.
@@ -31,8 +31,8 @@ from backend.orchestrator import run_agent, PROJECT_ROOT  # noqa: E402
 from build_cardnews import card_problems  # noqa: E402  (tools/ 가 sys.path 에 있음)
 
 RUNS_DIR = PROJECT_ROOT / "data" / "runs"
-# 테스트 산출물은 종류 불문 data/tests/ 아래에 모은다 (writer 테스트는 그 하위 writer/)
-TESTS_DIR = PROJECT_ROOT / "data" / "tests" / "writer"
+# 테스트 산출물은 종류 불문 data/tests/ 바로 아래에 모은다 (종류별 하위 폴더 없음)
+TESTS_DIR = PROJECT_ROOT / "data" / "tests"
 # 카드 규격의 단일 원천 — writer.md 에 없으므로 지시문에 전문을 첨부한다 (오케스트레이터와 동일 방식)
 CARD_SCHEMA_PATH = PROJECT_ROOT / "tools" / "cardnews" / "card_schema.md"
 

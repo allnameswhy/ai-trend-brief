@@ -27,8 +27,8 @@ from jinja2 import Environment, FileSystemLoader
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE_NAME = "card_template.html.j2"
-# 테스트 산출물은 종류 불문 data/tests/ 아래에 모은다 (프로젝트 규칙)
-DEFAULT_OUT = HERE.parent / "data" / "tests" / "cardnews"
+# 테스트 산출물은 종류 불문 data/tests/ 바로 아래에 모은다 (종류별 하위 폴더 없음, 프로젝트 규칙)
+DEFAULT_OUT = HERE.parent / "data" / "tests"
 
 # autoescape=True: 기사 제목 등에 <, & 같은 문자가 있어도 자동으로 무해하게 처리됨
 JINJA_ENV = Environment(loader=FileSystemLoader(HERE / "cardnews"), autoescape=True)
