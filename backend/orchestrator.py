@@ -129,22 +129,31 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
                 on_log(agent_name, f"완료 (턴 {message.num_turns}회)")
 
 
-async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
+async def run_pipeline(on_log=None, selected_from: str | None = None,
+                       output_base: Path | None = None) -> dict:
     """전체 파이프라인 1회 실행. on_log(stage, message) 콜백으로 로그를 내보낸다.
 
     selected_from: 기존 selected.json 경로를 주면 조사자·편집장 단계를 건너뛰고
                    그 확정 기사 목록으로 작가 단계부터 시작한다. (부분 실행용)
+    output_base:   산출물 폴더의 상위 위치(기본 data/runs). 테스트는 data/tests 를 넘겨
+                   실제 발간 run 과 섞이지 않게 한다. 이 경우 로그도 산출물 폴더 안에 둔다
+                   (테스트 산출물은 data/tests/<타임스탬프>/ 로 모으는 규칙).
     """
     if on_log is None:
         def on_log(stage, message):
             print(f"[{datetime.now():%H:%M:%S}] {stage:12s} | {message}")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = PROJECT_ROOT / "data" / "runs" / ts
+    base_dir = output_base or (PROJECT_ROOT / "data" / "runs")
+    run_dir = base_dir / ts
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    log_file = LOGS_DIR / f"run_{ts}.log"
+    # 실제 run 은 logs/ 에, 테스트(output_base 지정)는 산출물 폴더 안에 로그를 남긴다.
+    if output_base is not None:
+        log_file = run_dir / f"run_{ts}.log"
+    else:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        log_file = LOGS_DIR / f"run_{ts}.log"
 
     # 화면(또는 대시보드)으로 보내는 로그를 파일에도 똑같이 남긴다 (PROJECT_NOTES 2.10)
     def logger(stage, message):
