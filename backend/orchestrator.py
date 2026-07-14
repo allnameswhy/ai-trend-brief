@@ -49,24 +49,21 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_DIR = PROJECT_ROOT / ".claude" / "agents"
 LOGS_DIR = PROJECT_ROOT / "logs"
 
-# 카드 도구(자수 검사·렌더 실측·PNG 추출)는 tools/build_cardnews.py 에 모여 있다
-sys.path.insert(0, str(PROJECT_ROOT / "tools"))
-from build_cardnews import render_html, export_png  # noqa: E402
-
-# 검토자가 실행하는 카드 기계 검사 명령 (자수 규격 + 렌더 실측 — 판정은 이 명령이 한다).
-# sys.executable = 지금 파이프라인을 돌리는 파이썬(가상환경) — 검토자도 같은 환경을 쓰게 한다.
-CARD_CHECK_CMD = f"{Path(sys.executable).as_posix()} {(PROJECT_ROOT / 'tools' / 'build_cardnews.py').as_posix()}"
+# 작가·검토자가 실행하는 카드 도구 명령 (작가=렌더 / 검토자=자수 검사·렌더 실측). tools/build_cardnews.py.
+# sys.executable = 지금 파이프라인을 돌리는 파이썬(가상환경) — 에이전트도 같은 환경을 쓰게 한다.
+CARD_TOOL_CMD = f"{Path(sys.executable).as_posix()} {(PROJECT_ROOT / 'tools' / 'build_cardnews.py').as_posix()}"
 
 # .env 의 ANTHROPIC_API_KEY 를 환경변수로 로드 (파일이 없으면 조용히 넘어감)
 load_dotenv(PROJECT_ROOT / ".env")
 
 # 단계별로 각 에이전트에게 허용할 도구 (.claude/agents/*.md 의 frontmatter 와 맞춰 둠)
-# 검토자의 Bash 는 카드 기계 검사 명령 딱 하나만 허용 (최소 권한)
+# 작가·검토자의 Bash 는 카드 도구 명령(build_cardnews) 하나만 허용 (최소 권한)
+# — 작가는 렌더용, 검토자는 --check(기계 검사)용. 명령 접두사가 같아 같은 패턴으로 허용된다.
 ALLOWED_TOOLS = {
     "researcher": ["WebSearch", "WebFetch", "Read", "Write"],
     "editor": ["WebSearch", "Read", "Write"],
-    "writer": ["WebSearch", "WebFetch", "Read", "Write"],
-    "reviewer": ["WebSearch", "WebFetch", "Read", "Write", f"Bash({CARD_CHECK_CMD}:*)"],
+    "writer": ["WebSearch", "WebFetch", "Read", "Write", f"Bash({CARD_TOOL_CMD}:*)"],
+    "reviewer": ["WebSearch", "WebFetch", "Read", "Write", f"Bash({CARD_TOOL_CMD}:*)"],
 }
 
 # 에이전트별 모델 지정 (2026-07-13 확정 — 미지정 시 SDK 기본 모델을 따라가 비용을 예측할 수 없음)
@@ -212,7 +209,8 @@ async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
             "writer",
             f"{input_file} 에 담긴 기사 1건을 읽고, 원문 URL에 접속해 내용을 확인한 뒤 "
             f"아래 카드 규격에 따라 card_{idx:02d}.json 을 작성하세요. "
-            f'article_no는 "{idx:02d}", week_label은 "{week_label}" 입니다.\n\n'
+            f'article_no는 "{idx:02d}", week_label은 "{week_label}" 입니다.\n'
+            f"(PNG 렌더는 검토가 끝난 뒤 별도로 지시합니다 — 이 단계에서는 JSON 작성만 하세요.)\n\n"
             f"--- 카드 규격 (원천: tools/cardnews/card_schema.md) ---\n\n{card_spec}",
             run_dir, logger,
         )
@@ -228,7 +226,7 @@ async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
         f"결과를 review.md 에 저장하세요.\n"
         f"먼저 카드마다 아래 규격 기계 검사 명령을 반드시 실행하고, 그 출력(합격/불합격 사유)을 "
         f"review.md 에 그대로 기록하세요. 규격 합격 여부를 직접 판단하지 마세요 — 판정은 이 명령이 합니다:\n"
-        f"  {CARD_CHECK_CMD} card_01.json --check   (card_01.json 부분을 각 카드 파일명으로 바꿔 실행)\n"
+        f"  {CARD_TOOL_CMD} card_01.json --check   (card_01.json 부분을 각 카드 파일명으로 바꿔 실행)\n"
         f"기계 검사 불합격도 반려(REVISE) 사유입니다. "
         f"마지막 줄에 'VERDICT: PASS' 또는 'VERDICT: REVISE' 를 남기세요.",
         run_dir, logger,
@@ -236,53 +234,40 @@ async def run_pipeline(on_log=None, selected_from: str | None = None) -> dict:
     if output_missing("review.md"):
         return result
 
-    # 피드백 루프 1회 — REVISE 인 경우: 작가가 지적된 카드 수정 → 기계 재검사 → 검토자 재검토 → 종료
+    # 피드백 루프 1회 — REVISE 면 작가가 지적된 카드만 수정한다 (2차 검토는 하지 않음, 2026-07-14 지시).
     verdict = read_verdict(run_dir)
     logger("orchestrator", f"검토 판정: {verdict}")
     if verdict == "REVISE":
-        logger("orchestrator", "반려 → 작가 재작성 1회 진행 (지적된 카드 수정)")
-        # 재작성 전 카드를 기억해 두었다가, 실제로 바뀐 카드만 재검사·재검토시킨다 (토큰 절약)
-        card_files = [f"card_{idx:02d}.json" for idx in range(1, len(items) + 1)]
-        before = {name: (run_dir / name).read_text(encoding="utf-8") for name in card_files}
+        logger("orchestrator", "반려 → 작가 수정 1회 진행 (지적된 카드 수정, 재검토 없음)")
         await run_agent(
             "writer",
             "review.md 의 지적 사항을 반영해 해당 카드 파일(card_XX.json)들을 수정하세요. "
-            "카드 규격(필드 구조·자수 한도)은 그대로 유지해야 합니다.",
+            "카드 규격(필드 구조·자수 한도)은 그대로 유지해야 합니다. "
+            "(재작성 기회는 더 이상 없습니다. PNG 렌더는 다음 단계에서 일괄로 지시합니다.)",
             run_dir, logger,
         )
-        changed = [name for name in card_files
-                   if (run_dir / name).read_text(encoding="utf-8") != before[name]]
-        logger("orchestrator", f"수정 감지된 카드: {', '.join(changed) if changed else '(없음)'}")
-        if changed:
-            recheck_task = (
-                f"반려 후 작가가 다음 카드만 수정했습니다: {', '.join(changed)}. "
-                f"이 카드들만 규격 기계 검사 명령을 다시 실행하고 내용을 재검증한 뒤 review.md 를 갱신하세요:\n"
-                f"  {CARD_CHECK_CMD} card_01.json --check   (card_01.json 부분을 수정된 카드 파일명으로 바꿔 실행)\n"
-                "수정되지 않은 카드는 재검증하지 않습니다. "
-                "(재작성 기회는 더 이상 없습니다. 남은 문제는 로그로만 남기세요.)"
-            )
-        else:
-            recheck_task = (
-                "카드들을 다시 검증하고 review.md 를 갱신하세요. "
-                "(재작성 기회는 더 이상 없습니다. 남은 문제는 로그로만 남기세요.)"
-            )
-        await run_agent("reviewer", recheck_task, run_dir, logger)
 
-    # ⑤ PNG 렌더 — 검사 결과와 무관하게 모든 카드를 이미지로 뽑는다 (2026-07-13 지시).
-    #    최종 판단은 사람이 PNG를 보고 한다. (JSON이 깨진 카드만 건너뛰고 로그로 알림)
-    made = 0
-    for idx in range(1, len(items) + 1):
-        try:
-            card = json.loads((run_dir / f"card_{idx:02d}.json").read_text(encoding="utf-8"))
-            html_path = run_dir / f"card_{idx:02d}.html"
-            html_path.write_text(render_html(card), encoding="utf-8")
-            if export_png(html_path, run_dir / f"card_{idx:02d}.png"):
-                made += 1
-            else:
-                logger("orchestrator", f"card_{idx:02d} PNG 생성 실패 (HTML은 생성됨)")
-        except Exception as e:
-            logger("orchestrator", f"card_{idx:02d} 렌더 불가 — {e}")
-    logger("orchestrator", f"PNG 렌더: {made}/{len(items)}건 생성")
+    # ⑤ 렌더 — 검토(및 반려 수정)가 끝난 최종 카드를 작가가 PNG로 뽑는다 (카드당 1회, 재검토 없음).
+    #    최초 작성 때 렌더하지 않으므로, 반려로 바뀐 카드도 두 번 렌더되지 않는다.
+    await run_agent(
+        "writer",
+        f"확정된 카드 card_01.json ~ card_{len(items):02d}.json ({len(items)}건)을 모두 PNG로 렌더하세요. "
+        f"카드마다 아래 명령을 실행하고, 각 카드의 생성/실패 결과를 응답에 보고하세요. "
+        f"카드 내용(JSON)은 수정하지 말고 렌더만 하세요:\n"
+        f"  {CARD_TOOL_CMD} card_01.json   (card_01.json 부분을 각 카드 파일명으로 바꿔 전부 실행)",
+        run_dir, logger,
+    )
+
+    # 렌더 결과 집계 — 누락 PNG가 있으면 로그로 알린다 (자동 재렌더는 하지 않음).
+    made = sum(1 for idx in range(1, len(items) + 1)
+               if (run_dir / f"card_{idx:02d}.png").exists())
+    if made < len(items):
+        missing = [f"card_{idx:02d}" for idx in range(1, len(items) + 1)
+                   if not (run_dir / f"card_{idx:02d}.png").exists()]
+        logger("orchestrator",
+               f"PNG 누락 {len(missing)}건: {', '.join(missing)} — 작가 렌더 실패 가능. "
+               f"직접 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json")
+    logger("orchestrator", f"PNG 상태: {made}/{len(items)}건 존재")
 
     logger("orchestrator", "파이프라인 종료")
 

@@ -27,8 +27,6 @@ from jinja2 import Environment, FileSystemLoader
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE_NAME = "card_template.html.j2"
-# 테스트 산출물은 종류 불문 data/tests/ 바로 아래에 모은다 (종류별 하위 폴더 없음, 프로젝트 규칙)
-DEFAULT_OUT = HERE.parent / "data" / "tests"
 
 # autoescape=True: 기사 제목 등에 <, & 같은 문자가 있어도 자동으로 무해하게 처리됨
 JINJA_ENV = Environment(loader=FileSystemLoader(HERE / "cardnews"), autoescape=True)
@@ -287,7 +285,7 @@ def build_one(card_path: Path, out_dir: Path, make_png: bool) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="AI 브리프 카드뉴스 빌더")
     ap.add_argument("content", help="카드 콘텐츠 JSON (규격: tools/cardnews/card_schema.md)")
-    ap.add_argument("--out", default=str(DEFAULT_OUT), help="출력 폴더")
+    ap.add_argument("--out", default=None, help="출력 폴더 (기본: 콘텐츠 JSON과 같은 폴더)")
     ap.add_argument("--no-png", action="store_true", help="HTML만 생성(PNG 건너뜀)")
     ap.add_argument("--check", action="store_true", help="렌더 대신 기계 검사만 수행 (자수 규격 + 렌더 실측)")
     args = ap.parse_args()
@@ -300,8 +298,11 @@ def main() -> None:
         print(f"카드 기계 검사: {card_path.name}")
         sys.exit(run_check(card_path))
 
+    # --out 을 안 주면 콘텐츠 JSON과 같은 폴더에 저장한다
+    # (파이프라인: card_NN.json 옆 run 폴더 / 테스트: data/tests 아래에 그대로 생성)
+    out_dir = Path(args.out) if args.out else card_path.parent
     print(f"카드뉴스 빌드: {card_path.name}")
-    build_one(card_path, Path(args.out), make_png=not args.no_png)
+    build_one(card_path, out_dir, make_png=not args.no_png)
     print("완료.")
 
 
