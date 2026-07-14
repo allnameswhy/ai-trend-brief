@@ -15,12 +15,15 @@
 콘텐츠 JSON 스키마: tools/cardnews/card_schema.md 참고.
 """
 import argparse
+import contextlib
 import json
 import math
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -109,13 +112,25 @@ CHECK_JS = """
 """
 
 
+@contextlib.contextmanager
+def edge_user_data_dir():
+    """Edge headless 용 임시 user-data-dir.
+    Windows에서 Edge가 그 안에 Crashpad 폴더를 남겨, tempfile.TemporaryDirectory 자동 정리가
+    'WinError 145: 디렉터리가 비어 있지 않습니다' 로 실패한다. 정리 오류는 무시한다(임시 폴더라 무방)."""
+    udd = tempfile.mkdtemp()
+    try:
+        yield udd
+    finally:
+        shutil.rmtree(udd, ignore_errors=True)
+
+
 def check_layout(card: dict) -> dict | None:
     """카드를 실제로 렌더해 레이아웃 수치를 잰다. Edge가 없으면 None."""
     edge = find_edge()
     if not edge:
         return None
     html = render_html(card).replace("</body>", CHECK_JS + "</body>")
-    with tempfile.TemporaryDirectory() as udd:
+    with edge_user_data_dir() as udd:
         page = Path(udd) / "check.html"
         page.write_text(html, encoding="utf-8")
         out = subprocess.run(
@@ -247,7 +262,7 @@ def export_png(html_path: Path, png_path: Path) -> bool:
     if not edge:
         print("  ! Edge를 찾지 못해 PNG는 건너뜀. HTML만 생성됨.", file=sys.stderr)
         return False
-    with tempfile.TemporaryDirectory() as udd:
+    with edge_user_data_dir() as udd:
         cmd = [
             edge,
             "--headless=new",
@@ -262,6 +277,12 @@ def export_png(html_path: Path, png_path: Path) -> bool:
             html_path.resolve().as_uri(),   # 상대 경로 입력도 안전하게 (as_uri는 절대 경로 필수)
         ]
         subprocess.run(cmd, capture_output=True, timeout=120)
+    # Edge --headless=new 는 스크린샷을 비동기로 저장하는 경우가 있어, 프로세스 종료 직후엔
+    # 아직 파일이 없을 수 있다. 최대 2초까지 생성 여부를 확인한다 (허위 '실패' 방지).
+    for _ in range(20):
+        if png_path.exists():
+            return True
+        time.sleep(0.1)
     return png_path.exists()
 
 
