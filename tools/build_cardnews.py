@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -288,6 +289,8 @@ def main() -> None:
     ap.add_argument("--out", default=None, help="출력 폴더 (기본: 콘텐츠 JSON과 같은 폴더)")
     ap.add_argument("--no-png", action="store_true", help="HTML만 생성(PNG 건너뜀)")
     ap.add_argument("--check", action="store_true", help="렌더 대신 기계 검사만 수행 (자수 규격 + 렌더 실측)")
+    ap.add_argument("--test", action="store_true",
+                    help="테스트 렌더 — 결과를 data/tests/<타임스탬프>/ 에 저장 (data/runs 와 같은 구조)")
     args = ap.parse_args()
 
     card_path = Path(args.content)
@@ -298,12 +301,19 @@ def main() -> None:
         print(f"카드 기계 검사: {card_path.name}")
         sys.exit(run_check(card_path))
 
-    # --out 을 안 주면 콘텐츠 JSON과 같은 폴더에 저장한다
-    # (파이프라인: card_NN.json 옆 run 폴더 / 테스트: data/tests 아래에 그대로 생성)
-    out_dir = Path(args.out) if args.out else card_path.parent
+    # 출력 폴더 결정:
+    #   --test: 테스트 산출물은 종류 불문 data/tests/<타임스탬프>/ 에 모은다 (data/runs/<타임스탬프>/ 와 같은 구조)
+    #   --out : 지정한 폴더
+    #   기본  : 콘텐츠 JSON 과 같은 폴더 (파이프라인은 card_NN.json 옆 run 폴더에 그대로 생성)
+    if args.test:
+        out_dir = HERE.parent / "data" / "tests" / datetime.now().strftime("%Y%m%d_%H%M%S")
+    elif args.out:
+        out_dir = Path(args.out)
+    else:
+        out_dir = card_path.parent
     print(f"카드뉴스 빌드: {card_path.name}")
     build_one(card_path, out_dir, make_png=not args.no_png)
-    print("완료.")
+    print(f"완료. → {out_dir}")
 
 
 if __name__ == "__main__":

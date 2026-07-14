@@ -31,7 +31,7 @@ from backend.orchestrator import run_agent, PROJECT_ROOT  # noqa: E402
 from build_cardnews import card_problems  # noqa: E402  (tools/ 가 sys.path 에 있음)
 
 RUNS_DIR = PROJECT_ROOT / "data" / "runs"
-# 테스트 산출물은 종류 불문 data/tests/ 바로 아래에 모은다 (종류별 하위 폴더 없음)
+# 테스트 산출물은 종류 불문 data/tests/<타임스탬프>/ 에 모은다 (data/runs/<타임스탬프>/ 와 같은 구조)
 TESTS_DIR = PROJECT_ROOT / "data" / "tests"
 # 카드 규격의 단일 원천 — writer.md 에 없으므로 지시문에 전문을 첨부한다 (오케스트레이터와 동일 방식)
 CARD_SCHEMA_PATH = PROJECT_ROOT / "tools" / "cardnews" / "card_schema.md"

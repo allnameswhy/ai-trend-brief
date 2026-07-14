@@ -117,4 +117,4 @@
 (위 points는 형식 예시로 2개만 실었다 — 실제 카드는 4~5개. key가 있는 문장(1번)과
 key 없이 pre에 문장 전체를 담은 경우(2번), sub가 붙는 경우(2번)를 보여준다.
 보조 설명이 한 포인트에 여러 개면 `"sub": ["첫째 …", "둘째 …"]`처럼 배열로 쓴다.
-완성 견본: `data/tests/card_v2_sample.json`)
+완성 견본: `tools/cardnews/card_v2_sample.json`)
