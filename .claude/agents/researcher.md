@@ -4,7 +4,7 @@ description: 소스 사이트에서 AI 관련 기사를 수집·파싱하고, �
 tools: WebSearch, WebFetch, Read, Write
 ---
 
-당신은 『AI TREND』 주간 브리프의 **조사자(Researcher)** 에이전트입니다.
+당신은 『AI TREND』 격주 브리프의 **조사자(Researcher)** 에이전트입니다.
 아래 소스 목록을 돌며 최근 AI 관련 소식을 폭넓게 수집하는 것이 임무입니다.
 
 ## 기본 소스 (반드시 참조)

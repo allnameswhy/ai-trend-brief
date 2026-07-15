@@ -1,10 +1,11 @@
 # AI TREND 자동 발간 시스템 (파일럿)
 
-『AI TREND — 해외 AI 정책·기술 동향 조사』 주간 브리프를
+『AI TREND — 해외 AI 정책·기술 동향 조사』 격주 브리프(월 2회)를
 조사자 → 편집장 → 작가 → 검토자 4개 에이전트 파이프라인으로 자동 생성하는 프로젝트입니다.
 
-- 전체 기획: `PROJECT_NOTES.md` / 아키텍처: `docs/architecture.png`
-- Claude Code 작업 컨텍스트: `CLAUDE.md`
+- 전체 기획·명세(단일 원천): `PROJECT_NOTES.md` — 파이프라인 구조는 2.7 「에이전트 파이프라인 요약」 참조
+- 아키텍처 그림: `docs/architecture.png`
+- Claude Code 작업 컨텍스트: `CLAUDE.md` / 할 일: `TODO.md`
 
 ---
 
@@ -44,7 +45,7 @@ pip install -r requirements.txt
 
 ## 실행
 
-**1차 데모 — 터미널에서 파이프라인만 (현재 목표)**
+**1차 데모 — 터미널에서 파이프라인만 (완료)**
 
 ```bash
 python backend/orchestrator.py
@@ -52,9 +53,12 @@ python backend/orchestrator.py
 
 조사자→편집장→작가→검토자가 순서대로 돌고 로그가 화면에 흐릅니다.
 결과물은 `data/runs/<실행시각>/` 폴더에 생깁니다:
-`candidates.json`(후보) → `selected.json`(확정 10건) → `draft.md`(원고) → `review.md`(검토 로그)
+`candidates.json`(후보) → `selected.json`(확정 기사, 최대 10건) → `card_NN.json`(카드 콘텐츠)
+→ `review.md`(검토 로그) → `card_NN.png`(배포용 카드 이미지)
 
-**2차 데모 — 대시보드**
+마지막에 자동 발송하지 않고 멈춥니다 — `review.md`와 카드 PNG를 직접 확인하세요.
+
+**2차 데모 — 대시보드 (현재 목표, 골격까지 동작)**
 
 ```bash
 uvicorn backend.main:app --reload
