@@ -240,7 +240,12 @@ def card_problems(card_path: Path) -> list[str]:
     if r is None:
         return []                # Edge 없음 — 자수 검사 통과로 갈음
     if r["bottom_overflow"] > 0:
-        problems.append(f"실측 결과 내용이 카드 아래로 {r['bottom_overflow']}px 넘침 — 분량을 줄일 것")
+        px = r["bottom_overflow"]
+        # 문장 한 줄 36px(보조 한 줄 44px), 한 줄 ≈ 환산 42자 — card_schema.md 실측값과 동일
+        lines_over = math.ceil(px / 36)
+        problems.append(
+            f"실측 결과 내용이 카드 아래로 {px}px 넘침 — 약 {lines_over}줄(환산 약 {lines_over * 42}자) 분량을 줄일 것"
+            f" (보조 설명 한 줄을 빼면 44px 확보)")
     if r["title_overflow"] > 0:
         problems.append(f"실측 결과 제목이 {r['title_overflow']}px 잘림 — 제목을 더 짧게")
     return problems

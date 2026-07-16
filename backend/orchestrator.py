@@ -227,7 +227,7 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
             return result
         logger("orchestrator", f"작가 진행: {idx}/{len(items)}건 완료")
 
-    # ④ 검토자 — 카드마다 규격 기계 검사(명령 실행) + 내용의 출처·사실관계 검증 → review.md
+    # ④ 검토자 — 카드마다 규격 기계 검사(명령 실행) + 내용의 출처·사실관계·요약 품질 검증 → review.md
     #    규격 판정은 검토자가 직접 하지 않고 아래 명령(자수 규격 + 렌더 실측)이 한다.
     await run_agent(
         "reviewer",
@@ -251,7 +251,9 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
         await run_agent(
             "writer",
             "review.md 의 지적 사항을 반영해 해당 카드 파일(card_XX.json)들을 수정하세요. "
-            "카드 규격(필드 구조·자수 한도)은 그대로 유지해야 합니다. "
+            "필드 구조(스키마)는 그대로 유지하되, 자수·넘침 등 규격 불합격 지적은 기계 검사 "
+            "출력에 적힌 수치(현재/한도, 넘침 분량)만큼만 최소한으로 줄이세요 — 지적되지 않은 "
+            "카드·문장을 손대거나 필요 이상으로 줄이지 마세요. "
             "(재작성 기회는 더 이상 없습니다. PNG 렌더는 다음 단계에서 일괄로 지시합니다.)",
             run_dir, logger,
         )
