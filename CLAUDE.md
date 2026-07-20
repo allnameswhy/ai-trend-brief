@@ -15,10 +15,11 @@
 - **카드뉴스 v2 전환 완료 (2026-07-13)**: 카드 디자인을 불릿+완전한 문장형으로 개편(규격: `tools/cardnews/card_schema.md`).
   작가가 원고(item.md/draft.md) 없이 기사에서 **card_NN.json을 직접 작성**. 검토자가 카드마다 규격 기계 검사
   명령(`build_cardnews --check`)을 실행해 결과를 review.md에 기록하고(판정은 기계), 불합격은 반려 사유 —
-  반려 시 작가 수정 1회(재검토 없음). 수정까지 끝난 **최종 카드를 작가가 `build_cardnews`로 PNG 렌더**(카드당 1회).
-  즉 순서는 작성 → 검토(--check) → (반려 시)수정 → 렌더. 최초 작성 때는 렌더하지 않으므로 반려로 바뀐 카드도
-  두 번 렌더되지 않는다 (2026-07-14 변경: 오케스트레이터 일괄 렌더 ⑤ 제거·2차 검토 제거, 오케스트레이터는 누락 PNG만
-  로그로 경고). 최종 확인은 사람이 PNG로. (반려 자동 수정은 대시보드 구현 전까지의 임시 정책 — TODO 참조)
+  반려 시 작가 수정 1회(재검토 없음). 수정까지 끝난 **최종 카드는 오케스트레이터가 `build_cardnews`로 직접 PNG 렌더**
+  (카드당 1회. 2026-07-20 변경 — 렌더는 판단이 필요 없는 결정적 작업이라 작가 2차 호출을 폐지하고 코드가 subprocess로
+  실행, 작가의 Bash 권한도 제거). 즉 순서는 작성 → 검토(--check) → (반려 시)수정 → 렌더(코드 직접 실행).
+  최초 작성 때는 렌더하지 않으므로 어떤 카드도 두 번 렌더되지 않으며, 누락 PNG는 로그로만 경고(자동 재렌더 없음).
+  최종 확인은 사람이 PNG로. (반려 자동 수정은 대시보드 구현 전까지의 임시 정책 — TODO 참조)
 - 데모 범위에서 제외(추후 과제): 스케줄링, 이메일 발송, SQLite DB, 기록 관리자(⑤) 아카이브 참조
 - 원본 PDF 저장소: 데모 단계는 로컬(gitignore 폴더), 정식 운영 시 AWS S3 검토(20GB 기준 월 1천 원 미만, PROJECT_NOTES 3장 #3)
 
@@ -28,7 +29,7 @@
 backend/orchestrator.py  # 파이프라인 지휘: 순서 강제, 반려 시 1회 재작성 루프, 로그, HITL 정지
 backend/main.py          # FastAPI: POST /run(트리거), GET /events(SSE 로그), GET /(대시보드)
 frontend/index.html      # 대시보드: 발간 버튼 + 실시간 로그 (프레임워크 없는 순수 HTML)
-tools/build_cardnews.py  # 카드 렌더(HTML→PNG)와 규격 기계 검사(--check). 작가·검토자가 Bash로 이것만 실행
+tools/build_cardnews.py  # 카드 렌더(HTML→PNG)와 규격 기계 검사(--check). 렌더는 오케스트레이터가 직접 실행, 검토자만 --check용 Bash 허용
 tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본)
 tools/test_writer_*.py   # 기사 1건짜리 부분 테스트 하네스 (아래 규칙 8)
 data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json → card_NN.json(+html/png) → review.md
