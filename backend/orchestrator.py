@@ -132,7 +132,15 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
         if isinstance(message, AssistantMessage):
             for block in message.content:
                 if isinstance(block, ToolUseBlock):
-                    on_log(agent_name, f"도구 사용: {block.name}")
+                    # 도구 입력 요약을 함께 남긴다 (2026-07-21 추가 — 편집장의 WebFetch 횟수처럼
+                    # '무엇에' 도구를 썼는지가 로그만으로 판별되도록. 대표 입력 하나만 100자까지)
+                    detail = ""
+                    if isinstance(block.input, dict):
+                        val = next((block.input[k] for k in ("url", "query", "file_path", "command")
+                                    if block.input.get(k)), "")
+                        if val:
+                            detail = f" — {str(val)[:100]}"
+                    on_log(agent_name, f"도구 사용: {block.name}{detail}")
                 elif isinstance(block, TextBlock):
                     snippet = block.text.strip().replace("\n", " ")
                     if snippet:

@@ -20,6 +20,10 @@
   실행, 작가의 Bash 권한도 제거). 즉 순서는 작성 → 검토(--check) → (반려 시)수정 → 렌더(코드 직접 실행).
   최초 작성 때는 렌더하지 않으므로 어떤 카드도 두 번 렌더되지 않으며, 누락 PNG는 로그로만 경고(자동 재렌더 없음).
   최종 확인은 사람이 PNG로. (반려 자동 수정은 대시보드 구현 전까지의 임시 정책 — TODO 참조)
+- **2026-07-21 변경**: 오케스트레이터 `--resume`(중단 run 재개 — selected.json·기작성 카드 재사용),
+  편집장이 탈락 최종후보(최대 5건+사유)를 `dropped.json`에 기록하고 오케스트레이터가 run 로그에 남김,
+  조사자 저널 게재물 URL 제외(논문·Comment 기고 제외, 뉴스·매거진만), 편집장 선별 규칙 개편
+  (AI 중심성 게이트·중복 클러스터링 2단계·글 유형 감점·카테고리 비율 유연화). 세부는 PROJECT_NOTES 2.1·2.2·2.8.2
 - 데모 범위에서 제외(추후 과제): 스케줄링, 이메일 발송, SQLite DB, 기록 관리자(⑤) 아카이브 참조
 - 원본 PDF 저장소: 데모 단계는 로컬(gitignore 폴더), 정식 운영 시 AWS S3 검토(20GB 기준 월 1천 원 미만, PROJECT_NOTES 3장 #3)
 
@@ -32,7 +36,7 @@ frontend/index.html      # 대시보드: 발간 버튼 + 실시간 로그 (프�
 tools/build_cardnews.py  # 카드 렌더(HTML→PNG)와 규격 기계 검사(--check). 렌더는 오케스트레이터가 직접 실행, 검토자만 --check용 Bash 허용
 tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본)
 tools/test_writer_*.py   # 기사 1건짜리 부분 테스트 하네스 (아래 규칙 8)
-data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json → card_NN.json(+html/png) → review.md
+data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json) → card_NN.json(+html/png) → review.md
 data/tests/<timestamp>/  # 테스트 산출물 (run 과 같은 구조, 규칙 8)
 logs/run_<timestamp>.log # 실행별 누적 작업 로그 (PROJECT_NOTES 2.10)
 docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드오프 문서 (예외: architecture.png 는 추적 중)
@@ -40,6 +44,8 @@ docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드�
 
 ## 실행 방법
 - 1차 데모(터미널): `python backend/orchestrator.py`
+  - 부분 실행: `--selected <selected.json 경로>` — 조사자·편집장 건너뛰고 작가부터 (새 폴더)
+  - 재개 실행: `--resume <run 폴더>` — 중단된 run을 그 폴더에서 이어서 (기작성 카드 재사용)
 - 2차 데모(대시보드): `uvicorn backend.main:app --reload` 후 http://localhost:8000
 
 ## 프로젝트 규칙 (반드시 준수)
@@ -48,7 +54,7 @@ docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드�
 2. **자동 발송 절대 금지** — 파이프라인은 카드+검토 로그 제시 후 반드시 멈춘다 (HITL, 2.9)
 3. 작가 재작성 **피드백 루프는 1회로 고정** (2.8)
 4. 데모 단계: **무료 공개 콘텐츠만** 수집, 페이월은 무료 부분까지만 (2.0). SNS·개인 블로그 소스 금지 (PROJECT_NOTES 3장 #2)
-5. 기사 건수는 **최대 10건** — 모니터링 기간이 2주(격주 발간)로 짧아 굳이 채우지 않음(8건 등 가능, 10건 초과 불가). 카테고리 비율만 정책:기술:윤리 ≈ 2:4:2 유지 (2026-07-09 변경, 구 2.2 대체)
+5. 기사 건수는 **최대 10건** — 모니터링 기간이 2주(격주 발간)로 짧아 굳이 채우지 않음(8건 등 가능, 10건 초과 불가). 카테고리 비율 정책:기술:윤리 ≈ 2:4:2는 **참고 기준** — 엄격히 맞추지 않으며 기사의 질·대주제 다양성이 우선 (2026-07-09 변경, 구 2.2 대체; 비율 유연화는 editor.md 반영)
 6. 사용자는 개발 경험이 적음 → 변경 사항은 쉬운 말로 설명하고, 새 라이브러리 도입 전에 이유를 먼저 설명할 것
 7. **핸드오프·세션 인계 문서는 `docs/` 아래에 저장** — `docs/`는 gitignore 대상이라 저장소를 오염시키지 않는다. 저장소 루트에 두지 말 것. 인계 내용 중 **계속 유효한 기획·설계 결정은 `PROJECT_NOTES.md`에, 할 일은 `TODO.md`에 옮기고**, 핸드오프 문서에는 그 세션 한정의 경위만 남긴다 (2026-07-15 지시)
 8. **테스트 산출물은 종류 불문 `data/tests/<타임스탬프>/` 아래에 저장**  (`data/runs/<타임스탬프>/` 와 같은 구조 — 매 테스트 실행이 자기 타임스탬프 폴더를 가진다). 아래 도구들이 그 폴더를 자동 생성한다. 새 테스트 도구도 기본 출력을 여기로 잡는다 (2026-07-09 지시, 2026-07-14 run 과 동일 구조로 통일)
