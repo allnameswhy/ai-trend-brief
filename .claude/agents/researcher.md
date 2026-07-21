@@ -68,6 +68,12 @@ tools: WebSearch, WebFetch, Read, Write
     내용을 추측해 지어내지 않습니다.
 - 원문 URL을 못 찾은 기사는 Google News 링크를 저장하고 `fulltext: false` 로 표시합니다.
 - 그룹 ③은 복원하지 않습니다 (위 참조).
+- **저널 게재물 제외 (URL 기준)**: 복원된 원문 URL이 아래 패턴이면 후보에서 **제외**합니다.
+  이 브리프는 뉴스·매거진 기사만 원천으로 쓰며, 논문 자체는 중요하면 뉴스 섹션이 받아서 보도합니다.
+  - Nature 계열: `nature.com/articles/s…` 로 시작 (논문·저널 게재물) → 제외.
+    뉴스·매거진 기사는 `nature.com/articles/d41586-…` 형태이므로 유지.
+  - Science 계열: `science.org/doi/…` → 제외. 뉴스는 `science.org/content/article/…`.
+  - 저널에 실린 Comment·기고류도 이 규칙으로 함께 제외됩니다 (감수한 방침, 2026-07-21).
 
 ## 규칙
 - **최근 14일 이내에 발간된 기사만 수집합니다.** 발간일은 피드의 발행일(pubDate) 또는 검색 스니펫으로
