@@ -211,11 +211,16 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
         # ② 편집장 — 후보 중 최종 10건 확정 → selected.json
         await run_agent(
             "editor",
-            "candidates.json 을 읽고, 최종 10건을 카테고리 배분에 맞춰 확정한 뒤 selected.json 에 저장하세요.",
+            "candidates.json 을 읽고, 최종 10건을 카테고리 배분에 맞춰 확정한 뒤 selected.json 에 저장하세요. "
+            "탈락한 최종 후보(최대 5건)는 사유와 함께 dropped.json 에 저장하세요.",
             run_dir, logger,
         )
         if output_missing("selected.json"):
             return result
+
+        # 편집장이 남긴 탈락 최종후보 기록(dropped.json)을 run 로그에도 남긴다 (2026-07-21 추가 —
+        # 에이전트의 화면 출력(TextBlock)은 160자에서 잘리므로, 파일로 받아 오케스트레이터가 온전히 기록한다)
+        log_dropped(run_dir, logger)
 
     # ③ 작가 — 기사별로 카드뉴스 JSON(card_NN.json)을 직접 작성한다 (기사 1건 = 호출 1회).
     #    원고(item.md)→draft.md→카드 변환의 중간 단계를 없앰 (2026-07-13 변경):
@@ -333,6 +338,30 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
             lines = (proc.stderr or proc.stdout or "").strip().splitlines()
             detail = lines[-1] if lines else "출력 없음"
             on_log("orchestrator", f"렌더 실패: {card} (exit={proc.returncode}) — {detail}")
+
+
+def log_dropped(run_dir: Path, on_log) -> None:
+    """편집장이 기록한 탈락 최종후보(dropped.json)를 run 로그에 한 줄씩 남긴다 (2026-07-21 추가).
+    기록용 정보라 파일이 없거나 형식이 틀려도 파이프라인은 계속 진행한다."""
+    path = run_dir / "dropped.json"
+    if not path.exists():
+        on_log("orchestrator", "dropped.json 없음 — 편집장이 탈락 최종후보를 기록하지 않았습니다.")
+        return
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        on_log("orchestrator", f"dropped.json 읽기 실패 — 기록 생략 ({e})")
+        return
+    if not isinstance(entries, list) or not entries:
+        on_log("orchestrator", "탈락 최종후보 없음 (숏리스트가 전원 선정됨)")
+        return
+    shown = entries[:5]   # 편집장 지시가 최대 5건이지만, 초과 기록돼도 5건까지만 로그에 남긴다
+    note = f" (기록 {len(entries)}건 중 5건만 표시)" if len(entries) > 5 else ""
+    on_log("orchestrator", f"탈락 최종후보 {len(shown)}건 (편집장 기록){note}:")
+    for i, e in enumerate(shown, 1):
+        title = e.get("title_ko") or e.get("title_en") or e.get("title") or "(제목 없음)"
+        reason = e.get("reason") or "(사유 없음)"
+        on_log("orchestrator", f"  탈락 {i}. {title} — {reason}")
 
 
 def read_verdict(run_dir: Path) -> str:
