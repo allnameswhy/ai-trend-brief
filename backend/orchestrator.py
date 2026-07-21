@@ -133,7 +133,8 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
 
 
 async def run_pipeline(on_log=None, selected_from: str | None = None,
-                       output_base: Path | None = None) -> dict:
+                       output_base: Path | None = None,
+                       resume_dir: str | None = None) -> dict:
     """전체 파이프라인 1회 실행. on_log(stage, message) 콜백으로 로그를 내보낸다.
 
     selected_from: 기존 selected.json 경로를 주면 조사자·편집장 단계를 건너뛰고
@@ -141,15 +142,25 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
     output_base:   산출물 폴더의 상위 위치(기본 data/runs). 테스트는 data/tests 를 넘겨
                    실제 발간 run 과 섞이지 않게 한다. 이 경우 로그도 산출물 폴더 안에 둔다
                    (테스트 산출물은 data/tests/<타임스탬프>/ 로 모으는 규칙).
+    resume_dir:    중단된 기존 run 폴더 경로. 새 폴더를 만들지 않고 그 폴더에서 이어서
+                   실행한다 — selected.json 재사용(조사자·편집장 건너뜀), 이미 작성된
+                   card_NN.json 은 작가를 부르지 않고 재사용. 검토 이후 단계는 원래대로.
+                   로그도 그 run 의 기존 로그 파일에 이어 쓴다. (2026-07-21 추가 —
+                   작가 단계까지 끝나고 중단된 run 을 낭비 없이 재개하는 용도)
     """
     if on_log is None:
         def on_log(stage, message):
             print(f"[{datetime.now():%H:%M:%S}] {stage:12s} | {message}")
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_dir = output_base or (PROJECT_ROOT / "data" / "runs")
-    run_dir = base_dir / ts
-    run_dir.mkdir(parents=True, exist_ok=True)
+    if resume_dir:
+        # 재개 실행: 새 타임스탬프 폴더를 만들지 않고 기존 run 폴더를 그대로 쓴다.
+        run_dir = Path(resume_dir).resolve()
+        ts = run_dir.name          # 폴더명이 곧 타임스탬프 → 로그도 같은 파일에 이어 씀
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_dir = output_base or (PROJECT_ROOT / "data" / "runs")
+        run_dir = base_dir / ts
+        run_dir.mkdir(parents=True, exist_ok=True)
 
     # 실제 run 은 logs/ 에, 테스트(output_base 지정)는 산출물 폴더 안에 로그를 남긴다.
     if output_base is not None:
@@ -176,7 +187,14 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
         logger("orchestrator", f"기대한 산출물({filename})이 생성되지 않았습니다. 이후 단계를 중단합니다.")
         return True
 
-    if selected_from:
+    if resume_dir:
+        # 재개 실행: 폴더 안의 기존 selected.json 을 그대로 쓴다 (없으면 재개 불가).
+        if not (run_dir / "selected.json").exists():
+            logger("orchestrator",
+                   "재개 실패: 폴더에 selected.json 이 없습니다. 조사자·편집장부터 처음 실행하세요.")
+            return result
+        logger("orchestrator", f"재개 실행 — selected.json 재사용, 이미 작성된 카드는 건너뜀: {run_dir}")
+    elif selected_from:
         # 부분 실행: 기존 확정 기사 목록을 복사해 오고 조사자·편집장은 건너뛴다.
         shutil.copy(Path(selected_from), run_dir / "selected.json")
         logger("orchestrator", f"조사자·편집장 단계 건너뜀 — 기존 확정 기사 목록 재사용: {selected_from}")
@@ -213,6 +231,11 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
     week_label = f"{now.month}월 {(now.day - 1) // 7 + 1}주"   # 발행 주차 (그 달의 몇 번째 7일 구간)
 
     for idx, item in enumerate(items, start=1):
+        # 재개 실행이면 이미 작성된 카드는 작가를 부르지 않는다 (비용 절약).
+        # selected.json 이 같으면 정렬(stable sort)도 같아 번호-기사 대응이 유지된다.
+        if resume_dir and (run_dir / f"card_{idx:02d}.json").exists():
+            logger("orchestrator", f"작가 건너뜀: card_{idx:02d}.json 이미 있음 (재사용, {idx}/{len(items)}건)")
+            continue
         input_file = f"item_input_{idx:02d}.json"
         (run_dir / input_file).write_text(
             json.dumps(item, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -326,11 +349,14 @@ def read_verdict(run_dir: Path) -> str:
 if __name__ == "__main__":
     # 터미널 실행:
     #   python backend/orchestrator.py                      ← 전체 파이프라인
-    #   python backend/orchestrator.py --selected <경로>     ← 기존 selected.json 으로 작가부터
+    #   python backend/orchestrator.py --selected <경로>     ← 기존 selected.json 으로 작가부터 (새 폴더)
+    #   python backend/orchestrator.py --resume <run 폴더>   ← 중단된 run 을 그 폴더에서 이어서 실행
     import argparse
 
     parser = argparse.ArgumentParser(description="AI TREND 발간 파이프라인")
     parser.add_argument("--selected", default=None, metavar="경로",
                         help="기존 selected.json 경로 — 지정하면 조사자·편집장을 건너뛰고 작가부터 실행")
+    parser.add_argument("--resume", default=None, metavar="폴더",
+                        help="중단된 run 폴더 경로 — 이미 작성된 카드는 건너뛰고 그 폴더에서 이어서 실행")
     args = parser.parse_args()
-    asyncio.run(run_pipeline(selected_from=args.selected))
+    asyncio.run(run_pipeline(selected_from=args.selected, resume_dir=args.resume))
