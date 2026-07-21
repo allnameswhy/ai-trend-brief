@@ -62,11 +62,25 @@ load_dotenv(PROJECT_ROOT / ".env")
 # 단계별로 각 에이전트에게 허용할 도구 (.claude/agents/*.md 의 frontmatter 와 맞춰 둠)
 # 검토자의 Bash 는 카드 도구 명령(build_cardnews --check) 하나만 허용 (최소 권한).
 # 작가는 Bash 없음 — PNG 렌더는 오케스트레이터가 직접 실행한다 (2026-07-20 변경).
+# 편집장의 WebFetch 는 숏리스트 원문 검토용 (editor.md 작업 순서 2단계. 2026-07-21 추가 —
+# 빠져 있던 탓에 편집장이 권한 거부를 서브에이전트·ToolSearch 로 우회하다 토큰을 크게 낭비함)
 ALLOWED_TOOLS = {
     "researcher": ["WebSearch", "WebFetch", "Read", "Write"],
-    "editor": ["WebSearch", "Read", "Write"],
+    "editor": ["WebSearch", "WebFetch", "Read", "Write"],
     "writer": ["WebSearch", "WebFetch", "Read", "Write"],
     "reviewer": ["WebSearch", "WebFetch", "Read", "Write", f"Bash({CARD_TOOL_CMD}:*)"],
+}
+
+# 허용 목록 밖 도구는 차단한다 (2026-07-21 추가). allowed_tools 는 '자동 승인' 목록일 뿐
+# 나머지 도구가 사라지는 게 아니어서, 에이전트가 권한 없는 도구를 시도하다 거부당하고
+# 우회(서브에이전트 생성 등)하며 턴을 낭비하는 문제가 실측됨 — 아예 못 보게 막는다.
+# 검토자만 Bash 예외 (카드 기계 검사 명령용).
+_BLOCKED = ["Agent", "Task", "ToolSearch", "Bash", "PowerShell", "Glob", "Grep"]
+DISALLOWED_TOOLS = {
+    "researcher": _BLOCKED,
+    "editor": _BLOCKED,
+    "writer": _BLOCKED,
+    "reviewer": [t for t in _BLOCKED if t != "Bash"],
 }
 
 # 에이전트별 모델 지정 (2026-07-13 확정 — 미지정 시 SDK 기본 모델을 따라가 비용을 예측할 수 없음)
@@ -107,6 +121,7 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
     options = ClaudeAgentOptions(
         system_prompt=load_role(agent_name),   # 에이전트의 역할 = .md 본문
         allowed_tools=ALLOWED_TOOLS[agent_name],
+        disallowed_tools=DISALLOWED_TOOLS[agent_name],  # 허용 밖 도구 차단 (위 참조)
         model=MODELS[agent_name],              # 에이전트별 모델 고정 (위 MODELS 참조)
         permission_mode="acceptEdits",         # 파일 쓰기 자동 승인 (비대화형 실행용)
         cwd=str(run_dir),                      # 에이전트의 작업 폴더 = 이번 run 폴더
