@@ -24,19 +24,27 @@
   편집장이 탈락 최종후보(최대 5건+사유)를 `dropped.json`에 기록하고 오케스트레이터가 run 로그에 남김,
   조사자 저널 게재물 URL 제외(논문·Comment 기고 제외, 뉴스·매거진만), 편집장 선별 규칙 개편
   (AI 중심성 게이트·중복 클러스터링 2단계·글 유형 감점·카테고리 비율 유연화). 세부는 PROJECT_NOTES 2.1·2.2·2.8.2
+- **HITL 대시보드 구축 완료 (2026-07-24)**: 파이프라인을 [1단계 조사·선별]→선정 대기(사람이 기사 확정)→
+  [2단계 집필·검토]→카드 검토 대기(사람이 카드 수정)→[발행 PNG]로 분리. 오케스트레이터를
+  `run_phase1`/`run_phase2`/`render_cards`로 분해(CLI `run_pipeline` 동작 불변), 산출물 누락은 `PipelineError`,
+  상태는 run 폴더 `state.json`(서버 기록·재시작 복원), 중단 버튼(서브프로세스 정리 실측 확인), 오류·중단 복구
+  3단계(편집장부터/카드부터 재개). 편집장이 `screened.json`(게이트 통과 url 목록) 추가 산출 — 선정 화면 후보 풀.
+  사람 수정 백업: `selected_editor.json`·`card_NN_orig.json`. 메일 발송 버튼은 미구현 표시(자동 발송 금지 유지).
+  세부는 PROJECT_NOTES 0장·2.6·2.8.2. **주의: 발간 실행 시 uvicorn 은 `--reload` 없이**
 - 데모 범위에서 제외(추후 과제): 스케줄링, 이메일 발송, SQLite DB, 기록 관리자(⑤) 아카이브 참조
 - 원본 PDF 저장소: 데모 단계는 로컬(gitignore 폴더), 정식 운영 시 AWS S3 검토(20GB 기준 월 1천 원 미만, PROJECT_NOTES 3장 #3)
 
 ## 구조
 ```
 .claude/agents/*.md   # 에이전트 정의(역할·도구). 행동 수정은 여기서. 코드 수정 불필요
-backend/orchestrator.py  # 파이프라인 지휘: 순서 강제, 반려 시 1회 재작성 루프, 로그, HITL 정지
-backend/main.py          # FastAPI: POST /run(트리거), GET /events(SSE 로그), GET /(대시보드)
-frontend/index.html      # 대시보드: 발간 버튼 + 실시간 로그 (프레임워크 없는 순수 HTML)
+backend/orchestrator.py  # 파이프라인 라이브러리: run_phase1(조사·선별)/run_phase2(집필·검토)/render_cards(PNG) + CLI용 run_pipeline
+backend/main.py          # FastAPI: 상태 머신(선정 대기·카드 검토 대기 등 state.json), 단계 실행·중단·선정 확정·카드 편집·발행 API, SSE
+backend/card_service.py  # build_cardnews 인프로세스 래퍼: 프리뷰 HTML 렌더·자수 검사·종합(Edge 실측) 검사
+frontend/index.html      # HITL 대시보드: 제어·로그 / 기사 선정 / 카드 검토·편집 3화면 (프레임워크 없는 순수 HTML)
 tools/build_cardnews.py  # 카드 렌더(HTML→PNG)와 규격 기계 검사(--check). 렌더는 오케스트레이터가 직접 실행, 검토자만 --check용 Bash 허용
 tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본)
 tools/test_writer_*.py   # 기사 1건짜리 부분 테스트 하네스 (아래 규칙 8)
-data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json) → card_NN.json(+html/png) → review.md
+data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json+screened.json) → card_NN.json(+html/png) → review.md. 대시보드 run은 state.json(상태)·selected_editor.json(편집장 원안 백업)·card_NN_orig.json(작가 원본 백업) 추가
 data/tests/<timestamp>/  # 테스트 산출물 (run 과 같은 구조, 규칙 8)
 logs/run_<timestamp>.log # 실행별 누적 작업 로그 (PROJECT_NOTES 2.10)
 docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드오프 문서 (예외: architecture.png 는 추적 중)
@@ -46,7 +54,8 @@ docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드�
 - 1차 데모(터미널): `python backend/orchestrator.py`
   - 부분 실행: `--selected <selected.json 경로>` — 조사자·편집장 건너뛰고 작가부터 (새 폴더)
   - 재개 실행: `--resume <run 폴더>` — 중단된 run을 그 폴더에서 이어서 (기작성 카드 재사용)
-- 2차 데모(대시보드): `uvicorn backend.main:app --reload` 후 http://localhost:8000
+- 2차 데모(대시보드): `uvicorn backend.main:app` 후 http://localhost:8000
+  (**발간 실행 시 `--reload` 금지** — 파일 저장 시 실행 중 파이프라인이 죽음. 개발 중에만 사용)
 
 ## 프로젝트 규칙 (반드시 준수)
 1. **파일명은 영어**, 문서·주석·에이전트 프롬프트는 한국어 (PROJECT_NOTES 2.0)
@@ -68,4 +77,4 @@ docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드�
 사용자가 새 할 일을 말하면 해당 시급도·에이전트 위치에 끼워 넣을 것.
 
 ## 다음 작업 순서 (Work Plan, PROJECT_NOTES 4장)
-1. ✅ 에이전트 정의 → 2. ✅ 파이프라인 1차 데모(카드뉴스 v2 전환 포함 — 개편 후 전체 run 검증은 미실시) → 3. 🔄 **대시보드 구축(진행 중)** — 골격(발간 트리거 + SSE 로그)까지 완료, 남은 것은 중간 개입·아카이브 열람 UI → 4. 발간물 DB(SQLite)·아카이브 참조 → 5. 2차 데모 → 6. 테스트 발송
+1. ✅ 에이전트 정의 → 2. ✅ 파이프라인 1차 데모(카드뉴스 v2 전환 포함 — 개편 후 전체 run 검증은 미실시) → 3. ✅ **대시보드 구축(2026-07-24 완료)** — 중간 개입(선정 확정·카드 편집·발행) 포함. 남은 것: 아카이브 열람 UI(4단계와 함께), 대시보드 전체 리허설 run 1회 → 4. 발간물 DB(SQLite)·아카이브 참조 → 5. 2차 데모 → 6. 테스트 발송

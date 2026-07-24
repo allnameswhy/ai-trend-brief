@@ -8,15 +8,22 @@
 - 검토자가 카드마다 규격 기계 검사 명령(build_cardnews --check: 자수 규격+렌더 실측)을 실행해
   그 결과를 review.md 에 기록 — 판정은 명령(기계)이 하고, 검토자는 실행·기록과 내용 검증을 맡는다
 - 반려(REVISE) 시 작가 재작성 루프 1회 — 내용 지적과 규격 불합격을 함께 수정 (PROJECT_NOTES 2.8)
-  (※ 대시보드가 생기면 자동 수정 대신 인간이 직접 수정하는 흐름으로 바꿀 예정)
 - PNG는 검사 결과와 무관하게 전 카드 생성 — 렌더는 오케스트레이터가 직접 실행하고(판단이 필요 없는
   결정적 작업이라 에이전트를 쓰지 않는다, 2026-07-20 변경), 최종 확인은 사람이 PNG로 한다
 - 각 단계를 타임스탬프 로그 파일로 기록 (PROJECT_NOTES 2.10)
 - 마지막에 자동 발송하지 않고, 카드 + 검토 로그 경로를 제시하고 멈춤 (Human-in-the-loop)
 
+구조 (2026-07-24 대시보드 대응 분리):
+  run_phase1()  ① 조사자 → ② 편집장            (선정 대기 지점까지)
+  run_phase2()  ③ 작가 → ④ 검토자 → 반려 수정   (카드 검토 대기 지점까지, PNG 없음)
+  render_cards() ⑤ PNG 렌더                      (발행 단계)
+  run_pipeline() 위 셋을 쉬지 않고 이어 실행하는 CLI 용 조립 — 동작은 종전과 동일
+대시보드 서버(backend/main.py)는 run_pipeline 대신 단계 함수를 따로 불러,
+단계 사이에 사람의 확인(기사 선정 확정 / 카드 최종 검토)을 끼워 넣는다.
+
 실행 방법 두 가지:
   1) 터미널에서 직접:      python backend/orchestrator.py   ← 1차 데모
-  2) FastAPI 서버가 호출:  backend/main.py 가 run_pipeline() 을 불러 대시보드로 로그 스트리밍
+  2) FastAPI 서버가 호출:  backend/main.py 가 단계 함수를 불러 대시보드로 로그 스트리밍
 
 각 에이전트의 '성격(시스템 프롬프트)'은 .claude/agents/*.md 파일에 있습니다.
 → 에이전트 행동을 바꾸고 싶으면 그 마크다운 파일만 고치면 됩니다. (코드 수정 불필요)
@@ -93,6 +100,22 @@ MODELS = {
     "reviewer": "claude-opus-4-8",
 }
 
+# 에이전트 지시문 — 테스트 하네스(tools/test_research_edit.py)도 이 상수를 import 해
+# 실제 파이프라인과 지시문이 어긋나지 않게 한다 (복붙본 낡음 방지).
+RESEARCHER_TASK = "소스 목록을 돌며 최근 AI 관련 기사를 수집하고, candidates.json 파일에 저장하세요."
+EDITOR_TASK = (
+    "candidates.json 을 읽고, 최종 10건을 카테고리 배분에 맞춰 확정한 뒤 selected.json 에 저장하세요. "
+    "탈락한 최종 후보(최대 5건)는 사유와 함께 dropped.json 에 저장하세요. "
+    "그리고 1차 압축에서 필수 게이트를 통과한 후보 전체의 url 목록을 screened.json 에 저장하세요 "
+    "(숏리스트 20건이 아니라 게이트 통과 전체입니다 — 형식은 시스템 프롬프트의 산출물 절 참조)."
+)
+
+
+class PipelineError(Exception):
+    """진행 불가 오류 — 단계 산출물 누락 등, 뒤 단계를 계속할 수 없는 상태.
+    던지기 전에 원인을 logger 로 이미 기록해 둔다. CLI(run_pipeline)는 이 예외를 잡아
+    종전처럼 조용히 종료하고, 대시보드 서버(main.py)는 잡아서 오류 상태로 전환한다."""
+
 
 def load_role(agent_name: str) -> str:
     """.claude/agents/{name}.md 에서 YAML frontmatter(--- ... ---)를 걷어내고
@@ -106,8 +129,14 @@ def load_role(agent_name: str) -> str:
 
 
 async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
-    """한 에이전트를 실행한다. 에이전트는 run_dir 안에서 파일을 읽고 쓴다."""
-    on_log(agent_name, "시작")
+    """한 에이전트를 실행한다. 에이전트는 run_dir 안에서 파일을 읽고 쓴다.
+
+    on_log(stage, message, kind) 의 kind 는 화면 표시용 분류:
+      "log"(진행 로그, 기본) / "text"(에이전트 발화 — 전문을 그대로 넘김) / "tool"(도구 사용).
+    취소(CancelledError)는 여기서 잡지 않는다 — SDK 제너레이터의 정리 경로(서브프로세스 종료)가
+    돌도록 그대로 통과시키고, 최상위(서버의 태스크 래퍼)에서만 흡수한다.
+    """
+    on_log(agent_name, "시작", "log")
 
     # 에이전트가 산출물 저장 위치를 임의로 정하지 않도록, 작업 폴더를 지시문에 명시한다.
     # (위치를 안 알려주면 에이전트가 프로젝트를 둘러보고 그럴듯한 곳을 골라버리는 문제가 실제로 발생)
@@ -140,115 +169,108 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
                                     if block.input.get(k)), "")
                         if val:
                             detail = f" — {str(val)[:100]}"
-                    on_log(agent_name, f"도구 사용: {block.name}{detail}")
+                    on_log(agent_name, f"도구 사용: {block.name}{detail}", "tool")
                 elif isinstance(block, TextBlock):
-                    snippet = block.text.strip().replace("\n", " ")
-                    if snippet:
-                        on_log(agent_name, snippet[:160])
+                    text = block.text.strip()
+                    if text:
+                        # 전문을 그대로 넘긴다 — 파일 기록·터미널 출력의 160자 축약은
+                        # 로거(make_logger)와 기본 print 콜백이 각자 처리한다.
+                        on_log(agent_name, text, "text")
         elif isinstance(message, ResultMessage):
             if message.is_error:
-                on_log(agent_name, f"⚠️ 오류로 종료 (subtype={message.subtype})")
+                on_log(agent_name, f"⚠️ 오류로 종료 (subtype={message.subtype})", "log")
             cost = message.total_cost_usd
             if cost is not None:
-                on_log(agent_name, f"완료 (턴 {message.num_turns}회, 비용 ${cost:.4f})")
+                on_log(agent_name, f"완료 (턴 {message.num_turns}회, 비용 ${cost:.4f})", "log")
             else:
-                on_log(agent_name, f"완료 (턴 {message.num_turns}회)")
+                on_log(agent_name, f"완료 (턴 {message.num_turns}회)", "log")
 
 
-async def run_pipeline(on_log=None, selected_from: str | None = None,
-                       output_base: Path | None = None,
-                       resume_dir: str | None = None) -> dict:
-    """전체 파이프라인 1회 실행. on_log(stage, message) 콜백으로 로그를 내보낸다.
+def new_run_dir(output_base: Path | None = None) -> Path:
+    """새 run 폴더(data/runs/<타임스탬프>/)를 만들어 반환한다.
+    테스트는 output_base 로 data/tests 를 넘겨 실제 발간 run 과 섞이지 않게 한다."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_dir = output_base or (PROJECT_ROOT / "data" / "runs")
+    run_dir = base_dir / ts
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
-    selected_from: 기존 selected.json 경로를 주면 조사자·편집장 단계를 건너뛰고
-                   그 확정 기사 목록으로 작가 단계부터 시작한다. (부분 실행용)
-    output_base:   산출물 폴더의 상위 위치(기본 data/runs). 테스트는 data/tests 를 넘겨
-                   실제 발간 run 과 섞이지 않게 한다. 이 경우 로그도 산출물 폴더 안에 둔다
-                   (테스트 산출물은 data/tests/<타임스탬프>/ 로 모으는 규칙).
-    resume_dir:    중단된 기존 run 폴더 경로. 새 폴더를 만들지 않고 그 폴더에서 이어서
-                   실행한다 — selected.json 재사용(조사자·편집장 건너뜀), 이미 작성된
-                   card_NN.json 은 작가를 부르지 않고 재사용. 검토 이후 단계는 원래대로.
-                   로그도 그 run 의 기존 로그 파일에 이어 쓴다. (2026-07-21 추가 —
-                   작가 단계까지 끝나고 중단된 run 을 낭비 없이 재개하는 용도)
+
+def make_logger(run_dir: Path, on_log=None, output_base: Path | None = None):
+    """파일 기록 + on_log 콜백을 병행하는 로거를 만든다 (PROJECT_NOTES 2.10).
+
+    logger(stage, message, kind="log") 형태로 호출한다.
+    - 파일에는 종전 형식 그대로 남긴다. 에이전트 발화(kind="text")만 종전처럼
+      한 줄 160자로 줄여 기록하고, on_log 콜백에는 전문을 그대로 넘긴다
+      (대시보드가 사고과정을 온전히 표시하기 위함 — 추가 토큰 비용 없음).
+    - 실제 run 은 logs/ 에, 테스트(output_base 지정)는 산출물 폴더 안에 로그를 남긴다.
     """
     if on_log is None:
-        def on_log(stage, message):
+        def on_log(stage, message, kind="log"):
+            if kind == "text":
+                message = message.replace("\n", " ")[:160]
             print(f"[{datetime.now():%H:%M:%S}] {stage:12s} | {message}")
 
-    if resume_dir:
-        # 재개 실행: 새 타임스탬프 폴더를 만들지 않고 기존 run 폴더를 그대로 쓴다.
-        run_dir = Path(resume_dir).resolve()
-        ts = run_dir.name          # 폴더명이 곧 타임스탬프 → 로그도 같은 파일에 이어 씀
-    else:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_dir = output_base or (PROJECT_ROOT / "data" / "runs")
-        run_dir = base_dir / ts
-        run_dir.mkdir(parents=True, exist_ok=True)
-
-    # 실제 run 은 logs/ 에, 테스트(output_base 지정)는 산출물 폴더 안에 로그를 남긴다.
+    ts = run_dir.name
     if output_base is not None:
         log_file = run_dir / f"run_{ts}.log"
     else:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         log_file = LOGS_DIR / f"run_{ts}.log"
 
-    # 화면(또는 대시보드)으로 보내는 로그를 파일에도 똑같이 남긴다 (PROJECT_NOTES 2.10)
-    def logger(stage, message):
-        line = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {stage} | {message}"
+    def logger(stage, message, kind="log"):
+        file_msg = message.replace("\n", " ")[:160] if kind == "text" else message
+        line = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {stage} | {file_msg}"
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(line + "\n")
-        on_log(stage, message)
+        on_log(stage, message, kind)
 
-    logger("orchestrator", f"발간 파이프라인 시작 (run={ts})")
+    logger.log_file = log_file   # 호출측(result dict 등)에서 로그 경로를 참조할 수 있게
+    return logger
 
-    result = {"run_dir": str(run_dir), "cards": [], "review": None, "log": str(log_file)}
 
-    def output_missing(filename: str) -> bool:
-        """단계 산출물이 안 생겼으면 True. 뒤 단계를 헛돌리지 않도록 파이프라인을 멈추는 용도."""
-        if (run_dir / filename).exists():
-            return False
-        logger("orchestrator", f"기대한 산출물({filename})이 생성되지 않았습니다. 이후 단계를 중단합니다.")
-        return True
+def require_output(run_dir: Path, filename: str, logger) -> None:
+    """단계 산출물이 안 생겼으면 로그를 남기고 PipelineError 를 던진다.
+    뒤 단계를 헛돌리지 않도록 파이프라인을 멈추는 용도."""
+    if (run_dir / filename).exists():
+        return
+    logger("orchestrator", f"기대한 산출물({filename})이 생성되지 않았습니다. 이후 단계를 중단합니다.")
+    raise PipelineError(f"산출물 누락: {filename}")
 
-    if resume_dir:
-        # 재개 실행: 폴더 안의 기존 selected.json 을 그대로 쓴다 (없으면 재개 불가).
-        if not (run_dir / "selected.json").exists():
-            logger("orchestrator",
-                   "재개 실패: 폴더에 selected.json 이 없습니다. 조사자·편집장부터 처음 실행하세요.")
-            return result
-        logger("orchestrator", f"재개 실행 — selected.json 재사용, 이미 작성된 카드는 건너뜀: {run_dir}")
-    elif selected_from:
-        # 부분 실행: 기존 확정 기사 목록을 복사해 오고 조사자·편집장은 건너뛴다.
-        shutil.copy(Path(selected_from), run_dir / "selected.json")
-        logger("orchestrator", f"조사자·편집장 단계 건너뜀 — 기존 확정 기사 목록 재사용: {selected_from}")
+
+async def run_phase1(run_dir: Path, logger, resume: bool = False) -> None:
+    """1단계: ① 조사자(수집) → ② 편집장(선별). 끝나면 selected.json + dropped.json + screened.json.
+
+    resume=True 이고 candidates.json 이 이미 있으면 조사자를 건너뛰고 편집장부터
+    다시 실행한다 (오류·중단된 run 의 수집 결과 재사용 — 비용 절약).
+    """
+    if resume and (run_dir / "candidates.json").exists():
+        logger("orchestrator", "조사자 건너뜀 — 기존 candidates.json 재사용 (편집장부터 재개)")
     else:
         # ① 조사자 — 소스에서 후보 기사 수집 → candidates.json
-        await run_agent(
-            "researcher",
-            "소스 목록을 돌며 최근 AI 관련 기사를 수집하고, candidates.json 파일에 저장하세요.",
-            run_dir, logger,
-        )
-        if output_missing("candidates.json"):
-            return result
+        await run_agent("researcher", RESEARCHER_TASK, run_dir, logger)
+        require_output(run_dir, "candidates.json", logger)
 
-        # ② 편집장 — 후보 중 최종 10건 확정 → selected.json
-        await run_agent(
-            "editor",
-            "candidates.json 을 읽고, 최종 10건을 카테고리 배분에 맞춰 확정한 뒤 selected.json 에 저장하세요. "
-            "탈락한 최종 후보(최대 5건)는 사유와 함께 dropped.json 에 저장하세요.",
-            run_dir, logger,
-        )
-        if output_missing("selected.json"):
-            return result
+    # ② 편집장 — 후보 중 최종 10건 확정 → selected.json (+ dropped.json, screened.json)
+    await run_agent("editor", EDITOR_TASK, run_dir, logger)
+    require_output(run_dir, "selected.json", logger)
 
-        # 편집장이 남긴 탈락 최종후보 기록(dropped.json)을 run 로그에도 남긴다 (2026-07-21 추가 —
-        # 에이전트의 화면 출력(TextBlock)은 160자에서 잘리므로, 파일로 받아 오케스트레이터가 온전히 기록한다)
-        log_dropped(run_dir, logger)
+    # 편집장이 남긴 탈락 최종후보 기록(dropped.json)을 run 로그에도 남긴다 (2026-07-21 추가 —
+    # 에이전트의 화면 출력(TextBlock)은 160자에서 잘리므로, 파일로 받아 오케스트레이터가 온전히 기록한다)
+    log_dropped(run_dir, logger)
 
+
+async def run_phase2(run_dir: Path, logger, resume: bool = False) -> int:
+    """2단계: ③ 작가(기사별 카드 작성) → ④ 검토자 → 반려(REVISE) 시 작가 수정 1회.
+    PNG 렌더는 하지 않는다 — 발행 단계(render_cards)에서 별도 실행한다.
+    resume=True 면 이미 정상 작성된 card_NN.json 은 건너뛴다 (없거나 깨진 카드만 재작성).
+    반환값: 카드(기사) 수.
+    """
     # ③ 작가 — 기사별로 카드뉴스 JSON(card_NN.json)을 직접 작성한다 (기사 1건 = 호출 1회).
     #    원고(item.md)→draft.md→카드 변환의 중간 단계를 없앰 (2026-07-13 변경):
     #    원문을 읽고 바로 카드 규격으로 요약하는 편이 싸고, 재압축하며 뜻이 사라지는 문제도 없다.
     #    (기사별 호출 유지 이유: 10건을 한 세션에 맡기면 품질이 얕아지는 문제 확인됨)
+    require_output(run_dir, "selected.json", logger)   # 함수 단독 호출 시에도 명확한 오류가 나도록
     items = json.loads((run_dir / "selected.json").read_text(encoding="utf-8"))
     category_order = {"정책": 0, "기술": 1, "윤리": 2}
     items.sort(key=lambda it: category_order.get(it.get("category"), 9))
@@ -261,9 +283,15 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
     for idx, item in enumerate(items, start=1):
         # 재개 실행이면 이미 작성된 카드는 작가를 부르지 않는다 (비용 절약).
         # selected.json 이 같으면 정렬(stable sort)도 같아 번호-기사 대응이 유지된다.
-        if resume_dir and (run_dir / f"card_{idx:02d}.json").exists():
-            logger("orchestrator", f"작가 건너뜀: card_{idx:02d}.json 이미 있음 (재사용, {idx}/{len(items)}건)")
-            continue
+        # 단, 파일이 있어도 JSON 이 깨져 있으면(작성 도중 중단 등) 다시 작성한다.
+        card_file = run_dir / f"card_{idx:02d}.json"
+        if resume and card_file.exists():
+            try:
+                json.loads(card_file.read_text(encoding="utf-8"))
+                logger("orchestrator", f"작가 건너뜀: card_{idx:02d}.json 이미 있음 (재사용, {idx}/{len(items)}건)")
+                continue
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                logger("orchestrator", f"card_{idx:02d}.json 이 깨져 있어 다시 작성합니다")
         input_file = f"item_input_{idx:02d}.json"
         (run_dir / input_file).write_text(
             json.dumps(item, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -277,8 +305,7 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
             f"--- 카드 규격 (원천: tools/cardnews/card_schema.md) ---\n\n{card_spec}",
             run_dir, logger,
         )
-        if output_missing(f"card_{idx:02d}.json"):
-            return result
+        require_output(run_dir, f"card_{idx:02d}.json", logger)
         logger("orchestrator", f"작가 진행: {idx}/{len(items)}건 완료")
 
     # ④ 검토자 — 카드마다 규격 기계 검사(명령 실행) + 내용의 출처·사실관계·요약 품질 검증 → review.md
@@ -294,8 +321,7 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
         f"마지막 줄에 'VERDICT: PASS' 또는 'VERDICT: REVISE' 를 남기세요.",
         run_dir, logger,
     )
-    if output_missing("review.md"):
-        return result
+    require_output(run_dir, "review.md", logger)
 
     # 피드백 루프 1회 — REVISE 면 작가가 지적된 카드만 수정한다 (2차 검토는 하지 않음, 2026-07-14 지시).
     verdict = read_verdict(run_dir)
@@ -311,42 +337,91 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
             "(재작성 기회는 더 이상 없습니다. PNG 렌더는 수정이 끝나면 시스템이 자동 실행합니다.)",
             run_dir, logger,
         )
+    return len(items)
 
-    # ⑤ 렌더 — 검토(및 반려 수정)가 끝난 최종 카드를 오케스트레이터가 직접 PNG로 뽑는다 (카드당 1회).
-    #    렌더는 판단이 필요 없는 결정적 작업이라 에이전트를 부르지 않는다 (2026-07-20 변경 —
-    #    구 작가 2차 호출 폐지: 호출 비용 제거 + 명령 누락 위험 제거).
-    #    최초 작성 때 렌더하지 않으므로, 반려로 바뀐 카드도 두 번 렌더되지 않는다.
-    render_cards(run_dir, len(items), logger)
 
-    # 렌더 결과 집계 — 누락 PNG가 있으면 로그로 알린다 (자동 재렌더는 하지 않음).
-    made = sum(1 for idx in range(1, len(items) + 1)
-               if (run_dir / f"card_{idx:02d}.png").exists())
-    if made < len(items):
-        missing = [f"card_{idx:02d}" for idx in range(1, len(items) + 1)
-                   if not (run_dir / f"card_{idx:02d}.png").exists()]
+async def run_pipeline(on_log=None, selected_from: str | None = None,
+                       output_base: Path | None = None,
+                       resume_dir: str | None = None) -> dict:
+    """전체 파이프라인 1회 실행 — 1단계 + 2단계 + PNG 렌더를 쉬지 않고 이어 실행하는 CLI 용 조립.
+    on_log(stage, message, kind) 콜백으로 로그를 내보낸다.
+    대시보드 서버(main.py)는 이 함수 대신 run_phase1/run_phase2/render_cards 를 단계별로 부른다.
+
+    selected_from: 기존 selected.json 경로를 주면 조사자·편집장 단계를 건너뛰고
+                   그 확정 기사 목록으로 작가 단계부터 시작한다. (부분 실행용)
+    output_base:   산출물 폴더의 상위 위치(기본 data/runs). 테스트는 data/tests 를 넘겨
+                   실제 발간 run 과 섞이지 않게 한다. 이 경우 로그도 산출물 폴더 안에 둔다
+                   (테스트 산출물은 data/tests/<타임스탬프>/ 로 모으는 규칙).
+    resume_dir:    중단된 기존 run 폴더 경로. 새 폴더를 만들지 않고 그 폴더에서 이어서
+                   실행한다 — selected.json 재사용(조사자·편집장 건너뜀), 이미 작성된
+                   card_NN.json 은 작가를 부르지 않고 재사용. 검토 이후 단계는 원래대로.
+                   로그도 그 run 의 기존 로그 파일에 이어 쓴다. (2026-07-21 추가 —
+                   작가 단계까지 끝나고 중단된 run 을 낭비 없이 재개하는 용도)
+    """
+    if resume_dir:
+        # 재개 실행: 새 타임스탬프 폴더를 만들지 않고 기존 run 폴더를 그대로 쓴다.
+        run_dir = Path(resume_dir).resolve()
+    else:
+        run_dir = new_run_dir(output_base)
+    ts = run_dir.name          # 폴더명이 곧 타임스탬프 → 재개 시 로그도 같은 파일에 이어 씀
+
+    logger = make_logger(run_dir, on_log, output_base)
+    logger("orchestrator", f"발간 파이프라인 시작 (run={ts})")
+
+    result = {"run_dir": str(run_dir), "cards": [], "review": None, "log": str(logger.log_file)}
+
+    try:
+        if resume_dir:
+            # 재개 실행: 폴더 안의 기존 selected.json 을 그대로 쓴다 (없으면 재개 불가).
+            if not (run_dir / "selected.json").exists():
+                logger("orchestrator",
+                       "재개 실패: 폴더에 selected.json 이 없습니다. 조사자·편집장부터 처음 실행하세요.")
+                raise PipelineError("재개 실패: selected.json 없음")
+            logger("orchestrator", f"재개 실행 — selected.json 재사용, 이미 작성된 카드는 건너뜀: {run_dir}")
+        elif selected_from:
+            # 부분 실행: 기존 확정 기사 목록을 복사해 오고 조사자·편집장은 건너뛴다.
+            shutil.copy(Path(selected_from), run_dir / "selected.json")
+            logger("orchestrator", f"조사자·편집장 단계 건너뜀 — 기존 확정 기사 목록 재사용: {selected_from}")
+        else:
+            await run_phase1(run_dir, logger)
+
+        n = await run_phase2(run_dir, logger, resume=bool(resume_dir))
+
+        # ⑤ 렌더 — 검토(및 반려 수정)가 끝난 최종 카드를 오케스트레이터가 직접 PNG로 뽑는다 (카드당 1회).
+        #    렌더는 판단이 필요 없는 결정적 작업이라 에이전트를 부르지 않는다 (2026-07-20 변경).
+        #    최초 작성 때 렌더하지 않으므로, 반려로 바뀐 카드도 두 번 렌더되지 않는다.
+        render_cards(run_dir, n, logger)
+
+        # 렌더 결과 집계 — 누락 PNG가 있으면 로그로 알린다 (자동 재렌더는 하지 않음).
+        made, missing = png_status(run_dir, n)
+        if missing:
+            logger("orchestrator",
+                   f"PNG 누락 {len(missing)}건: {', '.join(missing)} — 렌더 실패, 위 로그의 오류 확인. "
+                   f"직접 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json")
+        logger("orchestrator", f"PNG 상태: {made}/{n}건 존재")
+
+        logger("orchestrator", "파이프라인 종료")
+
+        # Human-in-the-loop: 자동 발송하지 않는다. 결과물 위치만 알려주고 사람의 판단을 기다린다.
+        review = run_dir / "review.md"
         logger("orchestrator",
-               f"PNG 누락 {len(missing)}건: {', '.join(missing)} — 렌더 실패, 위 로그의 오류 확인. "
-               f"직접 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json")
-    logger("orchestrator", f"PNG 상태: {made}/{len(items)}건 존재")
+               f"검토 대기: 카드 {n}건(PNG {made}건), 검토 로그={review} "
+               f"— 검토 로그의 기계 검사 결과와 PNG를 확인하고 발송 여부를 결정하세요. (자동 발송 없음) "
+               f"직접 수정 시 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json")
 
-    logger("orchestrator", "파이프라인 종료")
-
-    # Human-in-the-loop: 자동 발송하지 않는다. 결과물 위치만 알려주고 사람의 판단을 기다린다.
-    review = run_dir / "review.md"
-    logger("orchestrator",
-           f"검토 대기: 카드 {len(items)}건(PNG {made}건), 검토 로그={review} "
-           f"— 검토 로그의 기계 검사 결과와 PNG를 확인하고 발송 여부를 결정하세요. (자동 발송 없음) "
-           f"직접 수정 시 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json")
-
-    result["cards"] = [str(run_dir / f"card_{idx:02d}.json") for idx in range(1, len(items) + 1)]
-    result["review"] = str(review)
+        result["cards"] = [str(run_dir / f"card_{idx:02d}.json") for idx in range(1, n + 1)]
+        result["review"] = str(review)
+    except PipelineError:
+        # 원인은 이미 로그에 남았다 — CLI 는 종전처럼 그 시점의 result 로 조용히 종료한다.
+        return result
     return result
 
 
 def render_cards(run_dir: Path, count: int, on_log) -> None:
     """확정된 카드(card_01 ~ card_NN)를 PNG로 렌더한다 — 오케스트레이터가 직접 실행.
     렌더는 판단이 필요 없는 결정적 작업이라 에이전트를 쓰지 않는다 (2026-07-20 변경).
-    한 카드가 실패해도 나머지는 계속 시도한다 (PNG는 전 카드 생성 원칙, 최종 확인은 사람)."""
+    한 카드가 실패해도 나머지는 계속 시도한다 (PNG는 전 카드 생성 원칙, 최종 확인은 사람).
+    ※ 동기 함수 — 서버(main.py)에서는 asyncio.to_thread 로 감싸 이벤트 루프를 막지 않는다."""
     tool = PROJECT_ROOT / "tools" / "build_cardnews.py"
     for idx in range(1, count + 1):
         card = f"card_{idx:02d}.json"
@@ -356,11 +431,18 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
             encoding="utf-8", errors="replace",
         )
         if proc.returncode == 0:
-            on_log("orchestrator", f"렌더 완료: {card}")
+            on_log("orchestrator", f"렌더 완료: {card}", "log")
         else:
             lines = (proc.stderr or proc.stdout or "").strip().splitlines()
             detail = lines[-1] if lines else "출력 없음"
-            on_log("orchestrator", f"렌더 실패: {card} (exit={proc.returncode}) — {detail}")
+            on_log("orchestrator", f"렌더 실패: {card} (exit={proc.returncode}) — {detail}", "log")
+
+
+def png_status(run_dir: Path, count: int) -> tuple[int, list[str]]:
+    """렌더 결과 집계 — (생성된 PNG 수, 누락 카드 이름 목록)을 돌려준다."""
+    missing = [f"card_{idx:02d}" for idx in range(1, count + 1)
+               if not (run_dir / f"card_{idx:02d}.png").exists()]
+    return count - len(missing), missing
 
 
 def log_dropped(run_dir: Path, on_log) -> None:
@@ -368,23 +450,23 @@ def log_dropped(run_dir: Path, on_log) -> None:
     기록용 정보라 파일이 없거나 형식이 틀려도 파이프라인은 계속 진행한다."""
     path = run_dir / "dropped.json"
     if not path.exists():
-        on_log("orchestrator", "dropped.json 없음 — 편집장이 탈락 최종후보를 기록하지 않았습니다.")
+        on_log("orchestrator", "dropped.json 없음 — 편집장이 탈락 최종후보를 기록하지 않았습니다.", "log")
         return
     try:
         entries = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        on_log("orchestrator", f"dropped.json 읽기 실패 — 기록 생략 ({e})")
+        on_log("orchestrator", f"dropped.json 읽기 실패 — 기록 생략 ({e})", "log")
         return
     if not isinstance(entries, list) or not entries:
-        on_log("orchestrator", "탈락 최종후보 없음 (숏리스트가 전원 선정됨)")
+        on_log("orchestrator", "탈락 최종후보 없음 (숏리스트가 전원 선정됨)", "log")
         return
     shown = entries[:5]   # 편집장 지시가 최대 5건이지만, 초과 기록돼도 5건까지만 로그에 남긴다
     note = f" (기록 {len(entries)}건 중 5건만 표시)" if len(entries) > 5 else ""
-    on_log("orchestrator", f"탈락 최종후보 {len(shown)}건 (편집장 기록){note}:")
+    on_log("orchestrator", f"탈락 최종후보 {len(shown)}건 (편집장 기록){note}:", "log")
     for i, e in enumerate(shown, 1):
         title = e.get("title_ko") or e.get("title_en") or e.get("title") or "(제목 없음)"
         reason = e.get("reason") or "(사유 없음)"
-        on_log("orchestrator", f"  탈락 {i}. {title} — {reason}")
+        on_log("orchestrator", f"  탈락 {i}. {title} — {reason}", "log")
 
 
 def read_verdict(run_dir: Path) -> str:

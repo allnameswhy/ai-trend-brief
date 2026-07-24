@@ -72,7 +72,9 @@ def main() -> None:
     tmp_selected = tmp_dir / "selected.json"
     tmp_selected.write_text(json.dumps([item], ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def logger(stage, message):
+    def logger(stage, message, kind="log"):
+        if kind == "text":   # 에이전트 발화는 전문으로 오므로 터미널에는 종전처럼 160자만
+            message = message.replace("\n", " ")[:160]
         print(f"[{datetime.now():%H:%M:%S}] {stage:12s} | {message}", flush=True)
 
     title = item.get("title_ko") or item.get("title_en") or "(제목 없음)"

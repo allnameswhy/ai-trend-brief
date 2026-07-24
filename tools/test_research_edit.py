@@ -31,17 +31,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from backend.orchestrator import run_agent, log_dropped, PROJECT_ROOT  # noqa: E402
+# 지시문은 오케스트레이터의 상수를 그대로 import 해 실제 파이프라인과 항상 동일하게 유지한다
+from backend.orchestrator import (  # noqa: E402
+    run_agent, log_dropped, PROJECT_ROOT, RESEARCHER_TASK, EDITOR_TASK,
+)
 
 # 테스트 산출물은 종류 불문 data/tests/<타임스탬프>/ 에 모은다 (data/runs/<타임스탬프>/ 와 같은 구조)
 TESTS_DIR = PROJECT_ROOT / "data" / "tests"
-
-# 지시문은 오케스트레이터(run_pipeline)의 조사자·편집장 단계와 동일하게 유지한다
-RESEARCHER_TASK = "소스 목록을 돌며 최근 AI 관련 기사를 수집하고, candidates.json 파일에 저장하세요."
-EDITOR_TASK = (
-    "candidates.json 을 읽고, 최종 10건을 카테고리 배분에 맞춰 확정한 뒤 selected.json 에 저장하세요. "
-    "탈락한 최종 후보(최대 5건)는 사유와 함께 dropped.json 에 저장하세요."
-)
 
 
 def count_by_category(path: Path) -> tuple[int, Counter]:
@@ -55,7 +51,9 @@ async def run_test(candidates_from: Path | None) -> None:
     test_dir.mkdir(parents=True)
     log_file = test_dir / f"run_{ts}.log"
 
-    def logger(stage, message):
+    def logger(stage, message, kind="log"):
+        if kind == "text":   # 에이전트 발화는 전문으로 오므로 파일·터미널에는 종전처럼 160자만
+            message = message.replace("\n", " ")[:160]
         line = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {stage} | {message}"
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(line + "\n")

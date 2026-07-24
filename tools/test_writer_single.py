@@ -82,7 +82,9 @@ def main() -> None:
     task = TASK_TEMPLATE.format(article_no=f"{args.item:02d}", week_label=week_label,
                                 card_spec=CARD_SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    def logger(stage, message):
+    def logger(stage, message, kind="log"):
+        if kind == "text":   # 에이전트 발화는 전문으로 오므로 터미널에는 종전처럼 160자만
+            message = message.replace("\n", " ")[:160]
         print(f"[{datetime.now():%H:%M:%S}] {stage:8s} | {message}", flush=True)
 
     title = item.get("title_ko") or item.get("title_en") or "(제목 없음)"
