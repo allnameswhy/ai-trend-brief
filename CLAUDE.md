@@ -28,7 +28,7 @@
   [2단계 집필·검토]→카드 검토 대기(사람이 카드 수정)→[발행 PNG]로 분리. 오케스트레이터를
   `run_phase1`/`run_phase2`/`render_cards`로 분해(CLI `run_pipeline` 동작 불변), 산출물 누락은 `PipelineError`,
   상태는 run 폴더 `state.json`(서버 기록·재시작 복원), 중단 버튼(서브프로세스 정리 실측 확인), 오류·중단 복구
-  3단계(편집장부터/카드부터 재개). 편집장이 `screened.json`(게이트 통과 url 목록) 추가 산출 — 선정 화면 후보 풀.
+  3단계(편집장부터/카드부터 재개), 초기화 버튼(run 버리기 — `discarded` 표식으로 복원 제외, 폴더는 보존). 편집장이 `screened.json`(게이트 통과 url 목록) 추가 산출 — 선정 화면 후보 풀.
   사람 수정 백업: `selected_editor.json`·`card_NN_orig.json`. 메일 발송 버튼은 미구현 표시(자동 발송 금지 유지).
   세부는 PROJECT_NOTES 0장·2.6·2.8.2. **주의: 발간 실행 시 uvicorn 은 `--reload` 없이**
 - 데모 범위에서 제외(추후 과제): 스케줄링, 이메일 발송, SQLite DB, 기록 관리자(⑤) 아카이브 참조

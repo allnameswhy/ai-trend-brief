@@ -289,6 +289,8 @@ def restore_last_run() -> None:
         st = load_json(d, "state.json", None)
         if not isinstance(st, dict):
             continue      # state.json 없는 구식 run 은 무시
+        if st.get("state") == "discarded":
+            continue      # [초기화]로 버린 run — 없는 셈 치고 그 이전 run 을 계속 탐색
         current["run_dir"] = str(d)
         current["cards"] = st.get("cards") or 0
         state = st.get("state", "idle")
@@ -381,6 +383,35 @@ async def cancel():
                             status_code=409)
     task.cancel()
     return {"status": "cancelling"}
+
+
+@app.post("/run/reset")
+async def reset_run():
+    """[초기화] — 현재 run 을 대시보드에서 버리고 대기(idle) 상태로 돌아간다.
+    산출물 폴더는 삭제하지 않는다: state.json 에 discarded 표식만 남겨
+    서버 재시작 복원 대상에서 제외한다. (중단·오류 run 을 재개하지 않고 처음부터 새로 시작하고
+    싶을 때 사용 — 초기화 후 [1단계 실행]은 재개가 아니라 새 run 이 된다.)"""
+    if current["task"] is not None or current["state"] in RUNNING_STATES:
+        return JSONResponse({"status": "busy", "error": "실행 중에는 초기화할 수 없습니다 — 먼저 [중단]을 누르세요"},
+                            status_code=409)
+    rd = run_dir_path()
+    if not rd:
+        return {"status": "ok"}   # 이미 대기 상태
+    if rd.exists():
+        (rd / "state.json").write_text(json.dumps(
+            {"state": "discarded",
+             "updated_at": datetime.now().isoformat(timespec="seconds"),
+             "error": None, "cards": current["cards"]},
+            ensure_ascii=False, indent=2), encoding="utf-8")
+    name = rd.name
+    current["run_dir"] = None
+    current["state"] = "idle"
+    current["error"] = None
+    current["cards"] = 0
+    push_event("log", agent="orchestrator",
+               message=f"run 초기화 — {name} 은 대시보드에서 제외됨 (폴더는 data/runs 에 그대로 남음)")
+    push_event("state", state="idle", error=None, run_dir=None, cards=0, resume=None)
+    return {"status": "ok"}
 
 
 @app.post("/publish")

@@ -71,6 +71,9 @@
   .btn.go{background:var(--wait);}
   .btn.go:hover{background:#224C8A;}
   .btn.go:disabled{background:#9FB4D2;}
+  .btn.gray{background:#75849B;}
+  .btn.gray:hover{background:#5B6B80;}
+  .btn.gray:disabled{background:#B9C2CE;}
   .btnRow{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
   .hint{font-size:.82rem; color:var(--muted); margin-top:10px; line-height:1.6;}
 
@@ -197,6 +200,7 @@
       <button id="btnP1" class="btn">1단계 실행: 조사·선별</button>
       <button id="btnP2" class="btn go" disabled>2단계 실행: 집필·검토</button>
       <button id="btnCancel" class="btn warn" disabled>중단</button>
+      <button id="btnReset" class="btn gray" disabled>초기화</button>
     </div>
     <div id="tracker"></div>
     <p class="hint">
@@ -339,7 +343,7 @@
       let hint = '';
       if (ST.resume === 'phase2') hint = ' → [2단계 재개 — 카드부터]로 이어서 실행하세요 (기존 카드 재사용).';
       else if (ST.resume === 'phase1') hint = ' → [1단계 재개 — 편집장부터]로 이어서 실행하세요 (수집 결과 재사용).';
-      else if (ST.state === 'error') hint = ' → [1단계 실행]으로 새로 시작하세요.';
+      hint += ' 재개하지 않고 처음부터 하려면 [초기화]로 이 run 을 버릴 수 있습니다.';
       banner.textContent = (ST.state === 'error' ? '⚠️ 오류: ' : '⛔ 중단됨: ') + (ST.error || '') + hint;
       banner.classList.remove('hidden');
     } else banner.classList.add('hidden');
@@ -350,6 +354,7 @@
     $('btnP2').disabled = busy || !(ST.state === 'waiting_selection' || ST.resume === 'phase2');
     $('btnP2').textContent = ST.resume === 'phase2' ? '2단계 재개 — 카드부터' : '2단계 실행: 집필·검토';
     $('btnCancel').disabled = !(ST.state === 'phase1_running' || ST.state === 'phase2_running');
+    $('btnReset').disabled = busy || !ST.state || ST.state === 'idle';
     $('btnPublish').disabled = !(ST.state === 'waiting_final_review' || ST.state === 'done');
 
     $('selectionPanel').classList.toggle('hidden', ST.state !== 'waiting_selection');
@@ -419,6 +424,11 @@
   $('btnCancel').onclick = async () => {
     if (!confirm('실행 중인 파이프라인을 중단할까요? (이미 만든 산출물은 재개 시 재사용됩니다)')) return;
     const r = await fetch('/cancel', {method:'POST'});
+    if (!r.ok) alertResp(r);
+  };
+  $('btnReset').onclick = async () => {
+    if (!confirm('현재 run 을 대시보드에서 버리고 초기 상태로 돌아갑니다.\n산출물 폴더는 data/runs 에 그대로 남습니다. 계속할까요?')) return;
+    const r = await fetch('/run/reset', {method:'POST'});
     if (!r.ok) alertResp(r);
   };
 
