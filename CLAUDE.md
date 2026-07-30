@@ -31,6 +31,9 @@
   3단계(편집장부터/카드부터 재개), 초기화 버튼(run 버리기 — `discarded` 표식으로 복원 제외, 폴더는 보존). 편집장이 `screened.json`(게이트 통과 url 목록) 추가 산출 — 선정 화면 후보 풀.
   사람 수정 백업: `selected_editor.json`·`card_NN_orig.json`. 메일 발송 버튼은 미구현 표시(자동 발송 금지 유지).
   세부는 PROJECT_NOTES 0장·2.6·2.8.2. **주의: 발간 실행 시 uvicorn 은 `--reload` 없이**
+- **발간 헤더 추가 (2026-07-30)**: 카드 묶음 맨 위 마스트헤드 `header.png`(1080×380, `tools/cardnews/header_template.html.j2`,
+  사용자 확정 시안 재현). `render_cards`가 발행 시점 호수를 `month_week_label()`로 재계산해 **호수가 다른 카드 JSON 을
+  갱신(호수 통일)**하고 헤더를 렌더(`build_cardnews.py --header "N월 N주"`). 세부는 PROJECT_NOTES 2.8.2·2.9
 - 데모 범위에서 제외(추후 과제): 스케줄링, 이메일 발송, SQLite DB, 기록 관리자(⑤) 아카이브 참조
 - 원본 PDF 저장소: 데모 단계는 로컬(gitignore 폴더), 정식 운영 시 AWS S3 검토(20GB 기준 월 1천 원 미만, PROJECT_NOTES 3장 #3)
 
@@ -42,7 +45,7 @@ backend/main.py          # FastAPI: 상태 머신(선정 대기·카드 검토 �
 backend/card_service.py  # build_cardnews 인프로세스 래퍼: 프리뷰 HTML 렌더·자수 검사·종합(Edge 실측) 검사
 frontend/index.html      # HITL 대시보드: 제어·로그 / 기사 선정 / 카드 검토·편집 3화면 (프레임워크 없는 순수 HTML)
 tools/build_cardnews.py  # 카드 렌더(HTML→PNG)와 규격 기계 검사(--check). 렌더는 오케스트레이터가 직접 실행, 검토자만 --check용 Bash 허용
-tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본)
+tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본) · header_template.html.j2(발간 헤더) · nrf-symbol.png(심벌)
 tools/test_writer_*.py   # 기사 1건짜리 부분 테스트 하네스 (아래 규칙 8)
 data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json+screened.json) → card_NN.json(+html/png) → review.md. 대시보드 run은 state.json(상태)·selected_editor.json(편집장 원안 백업)·card_NN_orig.json(작가 원본 백업) 추가
 data/tests/<timestamp>/  # 테스트 산출물 (run 과 같은 구조, 규칙 8)

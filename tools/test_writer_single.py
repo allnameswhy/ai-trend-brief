@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from backend.orchestrator import run_agent, PROJECT_ROOT  # noqa: E402
+from backend.orchestrator import run_agent, month_week_label, PROJECT_ROOT  # noqa: E402
 from build_cardnews import card_problems  # noqa: E402  (tools/ 가 sys.path 에 있음)
 
 RUNS_DIR = PROJECT_ROOT / "data" / "runs"
@@ -77,8 +77,7 @@ def main() -> None:
         json.dumps(item, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    now = datetime.now()
-    week_label = f"{now.month}월 {(now.day - 1) // 7 + 1}주"
+    week_label = month_week_label(datetime.now())
     task = TASK_TEMPLATE.format(article_no=f"{args.item:02d}", week_label=week_label,
                                 card_spec=CARD_SCHEMA_PATH.read_text(encoding="utf-8"))
 

@@ -186,6 +186,11 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
                 on_log(agent_name, f"완료 (턴 {message.num_turns}회)", "log")
 
 
+def month_week_label(now: datetime) -> str:
+    """발행 주차 표기 — 그 달의 몇 번째 7일 구간 (예: '8월 1주'). 헤더·카드 호수의 단일 원천."""
+    return f"{now.month}월 {(now.day - 1) // 7 + 1}주"
+
+
 def new_run_dir(output_base: Path | None = None) -> Path:
     """새 run 폴더(data/runs/<타임스탬프>/)를 만들어 반환한다.
     테스트는 output_base 로 data/tests 를 넘겨 실제 발간 run 과 섞이지 않게 한다."""
@@ -277,8 +282,7 @@ async def run_phase2(run_dir: Path, logger, resume: bool = False) -> int:
 
     # 카드 규격은 writer.md 에 싣지 않고 지시문에만 첨부한다 (단일 원천: card_schema.md)
     card_spec = (PROJECT_ROOT / "tools" / "cardnews" / "card_schema.md").read_text(encoding="utf-8")
-    now = datetime.now()
-    week_label = f"{now.month}월 {(now.day - 1) // 7 + 1}주"   # 발행 주차 (그 달의 몇 번째 7일 구간)
+    week_label = month_week_label(datetime.now())   # 집필 시점 주차 — 발행 때 render_cards 가 다시 통일함
 
     for idx, item in enumerate(items, start=1):
         # 재개 실행이면 이미 작성된 카드는 작가를 부르지 않는다 (비용 절약).
@@ -418,11 +422,44 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
 
 
 def render_cards(run_dir: Path, count: int, on_log) -> None:
-    """확정된 카드(card_01 ~ card_NN)를 PNG로 렌더한다 — 오케스트레이터가 직접 실행.
+    """확정된 카드(card_01 ~ card_NN)와 발간 헤더를 PNG로 렌더한다 — 오케스트레이터가 직접 실행.
     렌더는 판단이 필요 없는 결정적 작업이라 에이전트를 쓰지 않는다 (2026-07-20 변경).
+    호수는 발행(렌더) 시점에 다시 계산해 헤더와 전 카드에 통일한다 (2026-07-30 변경 —
+    집필과 발행이 주가 다르면 카드 알약·헤더 표시가 어긋나므로, 발행일 기준으로 맞춘다).
     한 카드가 실패해도 나머지는 계속 시도한다 (PNG는 전 카드 생성 원칙, 최종 확인은 사람).
     ※ 동기 함수 — 서버(main.py)에서는 asyncio.to_thread 로 감싸 이벤트 루프를 막지 않는다."""
     tool = PROJECT_ROOT / "tools" / "build_cardnews.py"
+
+    # ① 발행 시점 호수 계산 + 카드 JSON 통일 (card_NN_orig.json 등 백업은 건드리지 않음)
+    label = month_week_label(datetime.now())
+    updated = 0
+    for idx in range(1, count + 1):
+        card_file = run_dir / f"card_{idx:02d}.json"
+        try:
+            card = json.loads(card_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue   # 파일 문제는 아래 렌더 단계가 로그로 알린다
+        if card.get("week_label") != label:
+            card["week_label"] = label
+            card_file.write_text(json.dumps(card, ensure_ascii=False, indent=2), encoding="utf-8")
+            updated += 1
+    if updated:
+        on_log("orchestrator", f"호수 통일: '{label}' — 카드 {updated}건 갱신", "log")
+
+    # ② 발간 헤더 렌더 (실패해도 카드 렌더는 계속)
+    proc = subprocess.run(
+        [sys.executable, str(tool), "--header", label],
+        cwd=str(run_dir), capture_output=True, text=True,
+        encoding="utf-8", errors="replace",
+    )
+    if proc.returncode == 0:
+        on_log("orchestrator", "렌더 완료: header", "log")
+    else:
+        lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+        detail = lines[-1] if lines else "출력 없음"
+        on_log("orchestrator", f"렌더 실패: header (exit={proc.returncode}) — {detail}", "log")
+
+    # ③ 카드 렌더
     for idx in range(1, count + 1):
         card = f"card_{idx:02d}.json"
         proc = subprocess.run(

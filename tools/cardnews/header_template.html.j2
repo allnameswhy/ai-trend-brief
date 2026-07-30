@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 폰트: Pretendard(카드 템플릿과 동일). 오프라인/차단 시 맑은 고딕으로 대체됨 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #101319; }
+
+  /* ── 발간 헤더 본체 (1080 × 380) — 카드 묶음 맨 위 마스트헤드 ── */
+  .masthead {
+    width: 1080px; height: 380px; position: relative; overflow: hidden;
+    background: linear-gradient(158deg, #F7F8FC 0%, #EDF1FA 46%, #E6EDFB 72%, #F1F4FA 100%);
+    font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif;
+    color: #17203A; display: flex; flex-direction: column;
+  }
+
+  /* 은은한 광원·격자 — 카드 템플릿과 동일한 배경 시스템 */
+  .glow-tr { position: absolute; top: -220px; right: -180px; width: 640px; height: 640px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(62,109,232,0.14) 0%, rgba(62,109,232,0) 68%); }
+  .glow-bl { position: absolute; bottom: -260px; left: -200px; width: 700px; height: 700px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(38,178,255,0.10) 0%, rgba(38,178,255,0) 70%); }
+  .grid { position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(rgba(43,68,128,0.05) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(43,68,128,0.05) 1px, transparent 1px);
+    background-size: 72px 72px; }
+
+  /* 상단 3색 스트라이프 — 정책/기술/윤리 세 카테고리 상징 (순서 고정) */
+  .stripe { position: absolute; top: 0; left: 0; right: 0; height: 10px; display: flex;
+    pointer-events: none; }
+  .stripe .policy { flex: 1; background: #3E6DE8; }
+  .stripe .tech   { flex: 1; background: #0EA79E; }
+  .stripe .ethics { flex: 1; background: #7C64EE; }
+
+  /* 기관 lockup — NRF 심벌 + 구분선 + 기관명 */
+  .lockup { position: relative; display: flex; align-items: center; gap: 16px;
+    padding: 44px 64px 0 64px; }
+  .lockup img { height: 46px; display: block; }
+  .lockup .divider { width: 1px; height: 30px; background: rgba(43,68,128,0.22); }
+  .lockup .org { font-size: 20px; font-weight: 700; letter-spacing: 0.02em; color: #33415E; }
+
+  /* 마스트헤드 타이틀 — 브리프명 + 호수(week_label) + 설명 */
+  .title-block { position: relative; padding: 32px 64px 0 64px; }
+  .title-row { display: flex; align-items: baseline; gap: 24px; }
+  .title-row .brief { font-size: 84px; font-weight: 800; line-height: 1.02;
+    letter-spacing: -0.025em; color: #131C33; white-space: nowrap; }
+  .title-row .week { flex: none; font-size: 30px; font-weight: 800;
+    letter-spacing: -0.01em; color: #131C33; }
+  .desc { margin-top: 10px; font-size: 22px; font-weight: 500; line-height: 1.5;
+    color: #4C5B77; word-break: keep-all; text-wrap: pretty; }
+
+  /* 다크 푸터 밴드 — AI 고지문 (카드 푸터 밴드와 같은 컬러 시스템, 헤더 쪽이 슬림) */
+  .band { position: relative; margin-top: auto; background: #1B2440;
+    padding: 22px 64px 26px 64px; }
+  /* nowrap + 자간 조임으로 한 줄 유지 — 문구를 늘리면 1080px에서 잘리므로 변경 금지 */
+  .band .notice { font-size: 14.5px; font-weight: 400; line-height: 1.5; color: #DFE7F7;
+    letter-spacing: -0.03em; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="masthead">
+  <div class="glow-tr"></div>
+  <div class="glow-bl"></div>
+  <div class="grid"></div>
+
+  <div class="lockup">
+    <img src="{{ nrf_symbol }}" alt="NRF 심벌마크">
+    <div class="divider"></div>
+    <div class="org">한국연구재단</div>
+  </div>
+
+  <div class="stripe"><div class="policy"></div><div class="tech"></div><div class="ethics"></div></div>
+
+  <div class="title-block">
+    <div class="title-row">
+      <div class="brief">AI Trend Brief</div>
+      <div class="week">{{ week_label }}</div>
+    </div>
+    <div class="desc">과학기술·연구개발 AI 분야에서 2주간의 주요 기사를 요약하여 보여드립니다.</div>
+  </div>
+
+  <div class="band">
+    <div class="notice">본 발간물은 생성형 AI로 초안을 작성한 뒤 담당자의 검수를 거쳐 발간되었습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 인용을 위해서는 원문을 확인해 주시기 바랍니다.</div>
+  </div>
+</div>
+</body>
+</html>

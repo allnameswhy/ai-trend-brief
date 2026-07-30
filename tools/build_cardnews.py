@@ -11,10 +11,12 @@
     python tools/build_cardnews.py 내콘텐츠.json         # 콘텐츠 렌더
     python tools/build_cardnews.py 내콘텐츠.json --out 폴더 --no-png
     python tools/build_cardnews.py 내콘텐츠.json --check  # 기계 검사만 (자수 규격 + 렌더 실측 넘침)
+    python tools/build_cardnews.py --header "8월 1주"     # 발간 헤더(1080×380) 렌더
 
 콘텐츠 JSON 스키마: tools/cardnews/card_schema.md 참고.
 """
 import argparse
+import base64
 import contextlib
 import json
 import math
@@ -31,6 +33,8 @@ from jinja2 import Environment, FileSystemLoader
 
 HERE = Path(__file__).resolve().parent
 TEMPLATE_NAME = "card_template.html.j2"
+HEADER_TEMPLATE_NAME = "header_template.html.j2"     # 발간 헤더(마스트헤드) 템플릿
+NRF_SYMBOL_PATH = HERE / "cardnews" / "nrf-symbol.png"
 
 # autoescape=True: 기사 제목 등에 <, & 같은 문자가 있어도 자동으로 무해하게 처리됨
 JINJA_ENV = Environment(loader=FileSystemLoader(HERE / "cardnews"), autoescape=True)
@@ -75,6 +79,19 @@ def render_html(card: dict) -> str:
         "source_lines": as_lines(card.get("source", "")),
     }
     return JINJA_ENV.get_template(TEMPLATE_NAME).render(context)
+
+
+def render_header_html(week_label: str) -> str:
+    """발간 헤더(1080×380 마스트헤드) HTML을 렌더한다. 변수는 호수(week_label) 하나.
+    NRF 심벌은 base64 data URI로 인라인 — HTML이 run 폴더에 생성돼도 이미지가 깨지지 않는다."""
+    if not NRF_SYMBOL_PATH.exists():
+        sys.exit(f"NRF 심벌 이미지를 찾을 수 없습니다: {NRF_SYMBOL_PATH}")
+    b64 = base64.b64encode(NRF_SYMBOL_PATH.read_bytes()).decode("ascii")
+    context = {
+        "week_label": week_label,
+        "nrf_symbol": f"data:image/png;base64,{b64}",
+    }
+    return JINJA_ENV.get_template(HEADER_TEMPLATE_NAME).render(context)
 
 
 def find_edge() -> str | None:
@@ -262,7 +279,7 @@ def run_check(card_path: Path) -> int:
     return 0
 
 
-def export_png(html_path: Path, png_path: Path) -> bool:
+def export_png(html_path: Path, png_path: Path, size: tuple[int, int] = (1080, 1240)) -> bool:
     edge = find_edge()
     if not edge:
         print("  ! Edge를 찾지 못해 PNG는 건너뜀. HTML만 생성됨.", file=sys.stderr)
@@ -273,8 +290,8 @@ def export_png(html_path: Path, png_path: Path) -> bool:
             "--headless=new",
             "--disable-gpu",
             "--hide-scrollbars",
-            "--force-device-scale-factor=2",   # 2배 해상도 → 2160×2480
-            "--window-size=1080,1240",
+            "--force-device-scale-factor=2",   # 2배 해상도 (카드 2160×2480, 헤더 2160×760)
+            f"--window-size={size[0]},{size[1]}",
             "--default-background-color=00000000",
             "--virtual-time-budget=3000",       # 웹폰트 로드 대기
             f"--user-data-dir={udd}",
@@ -309,15 +326,64 @@ def build_one(card_path: Path, out_dir: Path, make_png: bool) -> None:
             print("  PNG  : 실패")
 
 
+def build_header(week_label: str, out_dir: Path, make_png: bool) -> None:
+    """발간 헤더를 out_dir 에 header.html(+header.png)로 렌더한다 — build_one과 대칭."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    html_out = out_dir / "header.html"
+    html_out.write_text(render_header_html(week_label), encoding="utf-8")
+    print(f"  HTML : {html_out}")
+
+    if make_png:
+        png_out = out_dir / "header.png"
+        if export_png(html_out, png_out, size=(1080, 380)):
+            size = png_out.stat().st_size
+            print(f"  PNG  : {png_out}  ({size:,} bytes)")
+        else:
+            print("  PNG  : 실패")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="AI 브리프 카드뉴스 빌더")
-    ap.add_argument("content", help="카드 콘텐츠 JSON (규격: tools/cardnews/card_schema.md)")
-    ap.add_argument("--out", default=None, help="출력 폴더 (기본: 콘텐츠 JSON과 같은 폴더)")
+    ap.add_argument("content", nargs="?", default=None,
+                    help="카드 콘텐츠 JSON (규격: tools/cardnews/card_schema.md)")
+    ap.add_argument("--header", default=None, metavar="호수",
+                    help='발간 헤더 렌더 모드 — 호수("8월 1주")를 받아 header.png 생성 (카드 JSON 불필요)')
+    ap.add_argument("--out", default=None, help="출력 폴더 (기본: 콘텐츠 JSON과 같은 폴더, 헤더는 현재 폴더)")
     ap.add_argument("--no-png", action="store_true", help="HTML만 생성(PNG 건너뜀)")
     ap.add_argument("--check", action="store_true", help="렌더 대신 기계 검사만 수행 (자수 규격 + 렌더 실측)")
     ap.add_argument("--test", action="store_true",
                     help="테스트 렌더 — 결과를 data/tests/<타임스탬프>/ 에 저장 (data/runs 와 같은 구조)")
     args = ap.parse_args()
+
+    # 카드 모드와 헤더 모드는 배타 — 입력 검증을 argparse 오류로 통일
+    if args.header and args.content:
+        ap.error("--header 모드에서는 콘텐츠 JSON을 받지 않습니다 (헤더는 호수만 필요)")
+    if not args.header and not args.content:
+        ap.error("콘텐츠 JSON 경로 또는 --header 중 하나가 필요합니다")
+    if args.header and args.check:
+        ap.error("--header 는 기계 검사 대상이 아닙니다 (--check 는 카드 전용)")
+
+    # 출력 폴더 결정:
+    #   --test: 테스트 산출물은 종류 불문 data/tests/<타임스탬프>/ 에 모은다 (data/runs/<타임스탬프>/ 와 같은 구조)
+    #   --out : 지정한 폴더
+    #   기본  : 콘텐츠 JSON 과 같은 폴더 (파이프라인은 card_NN.json 옆 run 폴더에 그대로 생성.
+    #           헤더 모드는 현재 폴더 — 오케스트레이터가 cwd=run 폴더로 호출)
+    if args.test:
+        out_dir = HERE.parent / "data" / "tests" / datetime.now().strftime("%Y%m%d_%H%M%S")
+    elif args.out:
+        out_dir = Path(args.out)
+    else:
+        out_dir = None   # 아래에서 모드별 기본값
+
+    if args.header:
+        if not re.fullmatch(r"\d{1,2}월 \d주", args.header):
+            sys.exit(f'호수 형식이 아닙니다: "{args.header}" — "N월 N주" 형태로 지정하세요')
+        out_dir = out_dir or Path.cwd()
+        print(f"발간 헤더 빌드: {args.header}")
+        build_header(args.header, out_dir, make_png=not args.no_png)
+        print(f"완료. → {out_dir}")
+        return
 
     card_path = Path(args.content)
     if not card_path.exists():
@@ -327,16 +393,7 @@ def main() -> None:
         print(f"카드 기계 검사: {card_path.name}")
         sys.exit(run_check(card_path))
 
-    # 출력 폴더 결정:
-    #   --test: 테스트 산출물은 종류 불문 data/tests/<타임스탬프>/ 에 모은다 (data/runs/<타임스탬프>/ 와 같은 구조)
-    #   --out : 지정한 폴더
-    #   기본  : 콘텐츠 JSON 과 같은 폴더 (파이프라인은 card_NN.json 옆 run 폴더에 그대로 생성)
-    if args.test:
-        out_dir = HERE.parent / "data" / "tests" / datetime.now().strftime("%Y%m%d_%H%M%S")
-    elif args.out:
-        out_dir = Path(args.out)
-    else:
-        out_dir = card_path.parent
+    out_dir = out_dir or card_path.parent
     print(f"카드뉴스 빌드: {card_path.name}")
     build_one(card_path, out_dir, make_png=not args.no_png)
     print(f"완료. → {out_dir}")
