@@ -227,8 +227,9 @@ def validate_card(card: dict) -> list[str]:
             total_lines += 1
             need(weighted_len(sub) <= 46,
                  f"point {i} sub {j}는 환산 46자(한 줄) 이하(현재 {weighted_len(sub):.1f}자)")
-    # 보조 한 줄(44px)은 문장 한 줄(36px)보다 약간 비싸서, 보조가 많으면 한도를 한 줄 줄인다
-    line_budget = 13 if sub_count >= 4 else 14
+    # 보조 한 줄(44px)은 문장 한 줄(36px)보다 약간 비싸서, 보조가 많으면 한도를 한 줄 줄인다.
+    # 16줄은 푸터가 최소일 때의 물리 한계 — 푸터가 두꺼우면(출처 줄바꿈) 실측 검사가 넘침을 반려한다
+    line_budget = 15 if sub_count >= 4 else 16
     need(total_lines <= line_budget,
          f"본문 예상 줄수 합계(문장 줄+보조)는 {line_budget}줄 이하(현재 {total_lines}줄, 보조 {sub_count}개) — 카드에서 넘침")
 
