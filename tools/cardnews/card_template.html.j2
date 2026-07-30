@@ -70,9 +70,12 @@
   /* 하단 출처 메타 + AI 작성 고지 */
   .footer { position: relative; margin-top: auto; padding: 0 64px 44px 64px; }
   .footer .inner { border-top: 1px solid rgba(43,68,128,0.16); padding-top: 22px; }
-  .footer .meta-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; }
+  /* 겹침 방식: 출처가 길어도 로고를 밀어내지 않도록, 로고를 오른쪽 위에 절대 배치로 고정 */
+  .footer .meta-row { position: relative; }
   .footer .src { font-size: 13px; line-height: 1.7; color: #8792A8; white-space: nowrap; }
-  .footer .logo { flex: none; align-self: flex-start;
+  /* 첫 줄(원문 제목)만 로고(폭 141px)와 겹치기 전에 줄바꿈 — 나머지 줄은 한 줄 고정 유지 */
+  .footer .src .line-title { white-space: normal; word-break: keep-all; padding-right: 170px; }
+  .footer .logo { position: absolute; top: 0; right: 0;
     font-size: 16px; font-weight: 700; letter-spacing: 0.1em; color: #8792A8; }
   .footer .disclaimer { margin-top: 16px; font-size: 12px; line-height: 1.55; color: #A6AFC0;
     word-break: keep-all; text-align: justify; text-justify: inter-character; }
@@ -122,7 +125,8 @@
   <div class="footer">
     <div class="inner">
       <div class="meta-row">
-        <div class="src">{% for line in source_lines %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+        {# 줄마다 div — 첫 줄(원문 제목)만 line-title 로 줄바꿈 허용 #}
+        <div class="src">{% for line in source_lines %}<div{% if loop.first %} class="line-title"{% endif %}>{{ line }}</div>{% endfor %}</div>
         <div class="logo">AI TREND BRIEF</div>
       </div>
       <div class="disclaimer">본 발간물은 생성형 AI로 초안을 작성한 뒤 담당자의 검수를 거쳐 발간되었습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 인용을 위해서는 원문을 확인해 주시기 바랍니다.</div>
