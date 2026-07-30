@@ -1,0 +1,154 @@
+{#- 메일 본문 템플릿 — 마스트헤드+카드 전체를 이미지가 아니라 HTML 로 직접 그린다.
+    껍데기(head·630px 컨테이너·하단 주소 푸터·$beacon$ 등)는 mail_template.html.j2(스티비
+    발송물 원본)와 동일. 카드·마스트헤드 CSS 는 card_template.html.j2 / header_template.html.j2
+    를 그대로 이식하되 픽셀 수치만 1080px→580px 비율(약 0.54배)로 축소했다.
+    의도적 차이 2가지: ① 높이 고정(1240/380px) 대신 자동 — 수신 환경 폰트가 달라도 잘리지 않게
+    ② AI 고지문은 카드마다 반복하지 않고 마스트헤드 밴드 1회 + 10px 미만 글자는 10px 로 올림
+      (원본 비율대로면 8px 대로 떨어져 판독 불가) -#}
+<!doctype html><html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><!--[if !mso]><!--><meta http-equiv="X-UA-Compatible" content="IE=edge"><!--<![endif]--><title></title><!--[if mso]> <style type="text/css"> table { border-collapse: collapse; border: 0; border-spacing: 0; margin: 0; } div, td { padding: 0; } div { margin: 0 !important; } ul, li { margin: 0; } </style> <noscript> <xml> <o:OfficeDocumentSettings> <o:AllowPNG/> <o:PixelsPerInch>96</o:PixelsPerInch> </o:OfficeDocumentSettings> </xml> </noscript> <![endif]-->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>@media screen and (max-width: 460px) { .stb-two-col .stb-column { max-width: 100% !important; } } @media screen and (min-width: 461px) { .stb-two-col .stb-column { max-width: 50% !important; } } @media screen and (max-width: 640px) { img.stb-justify { width: 100% !important; } } .stb-one-col p, .stb-two-col p { margin: 0px !important; }</style>
+<style>
+  /* ── 공통 배경 시스템 (카드·마스트헤드 동일 — 원본 이식, 0.54배) ── */
+  .mb-sheet { width: 580px; position: relative; overflow: hidden; margin: 0 auto;
+    background: linear-gradient(158deg, #F7F8FC 0%, #EDF1FA 46%, #E6EDFB 72%, #F1F4FA 100%);
+    font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif;
+    color: #17203A; display: flex; flex-direction: column; text-align: left; }
+  .mb-glow-tr { position: absolute; top: -118px; right: -97px; width: 344px; height: 344px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(62,109,232,0.14) 0%, rgba(62,109,232,0) 68%); }
+  .mb-glow-bl { position: absolute; bottom: -140px; left: -107px; width: 376px; height: 376px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(38,178,255,0.10) 0%, rgba(38,178,255,0) 70%); }
+  .mb-grid { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none;
+    background-image: linear-gradient(rgba(43,68,128,0.05) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(43,68,128,0.05) 1px, transparent 1px);
+    background-size: 39px 39px; }
+
+  /* ── 마스트헤드 (header_template 이식) ── */
+  .mh-stripe { position: absolute; top: 0; left: 0; right: 0; height: 5px; display: flex;
+    pointer-events: none; }
+  .mh-stripe .policy { flex: 1; background: #3E6DE8; }
+  .mh-stripe .tech   { flex: 1; background: #0EA79E; }
+  .mh-stripe .ethics { flex: 1; background: #7C64EE; }
+  .mh-lockup { position: relative; display: flex; align-items: center; gap: 9px;
+    padding: 24px 34px 0 34px; }
+  .mh-lockup img { height: 25px; display: block; border: 0; }
+  .mh-lockup .divider { width: 1px; height: 16px; background: rgba(43,68,128,0.22); }
+  .mh-lockup .org { font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: #33415E; }
+  .mh-title-block { position: relative; padding: 17px 34px 0 34px; }
+  .mh-title-row { display: flex; align-items: baseline; gap: 13px; }
+  .mh-title-row .brief { font-size: 45px; font-weight: 800; line-height: 1.02;
+    letter-spacing: -0.025em; color: #131C33; white-space: nowrap; }
+  .mh-title-row .week { flex: none; font-size: 16px; font-weight: 800;
+    letter-spacing: -0.01em; color: #131C33; }
+  .mh-desc { margin-top: 5px; font-size: 12px; font-weight: 500; line-height: 1.5;
+    color: #4C5B77; word-break: keep-all; }
+  .mh-band { position: relative; margin-top: 18px; background: #1B2440;
+    padding: 12px 34px 14px 34px; }
+  .mh-band .notice { font-size: 10px; font-weight: 400; line-height: 1.5; color: #DFE7F7;
+    letter-spacing: -0.03em; }
+
+  /* ── 카드 (card_template 이식) ── */
+  .mc-header { position: relative; display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 34px 0 34px; }
+  .mc-header .brand { display: flex; align-items: center; gap: 8px; }
+  .mc-header .cat { display: flex; align-items: baseline; gap: 5px;
+    font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: #33415E; }
+  .mc-header .week { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; color: #5A6B8C;
+    border: 1px solid rgba(90,107,140,0.4); padding: 4px 11px; border-radius: 999px; }
+  .mc-headline { position: relative; padding: 24px 34px 0 34px; }
+  .mc-headline .title { font-size: 34px; font-weight: 800; line-height: 1.18;
+    letter-spacing: -0.02em; color: #131C33; white-space: nowrap; }
+  .mc-headline .sub { margin-top: 11px; font-size: 15px; font-weight: 500; line-height: 1.3;
+    color: #4C5B77; word-break: keep-all; }
+  .mc-headline .rule { margin-top: 12px; display: flex; align-items: center; }
+  .mc-points { position: relative; display: flex; flex-direction: column; gap: 19px;
+    padding: 21px 34px 0 34px; }
+  .mc-point { display: flex; flex-direction: column; gap: 6px; }
+  .mc-main { display: flex; gap: 12px; }
+  .mc-main .text { font-size: 13px; font-weight: 450; line-height: 1.5; color: #3D4A66;
+    word-break: keep-all; text-align: justify; }
+  .mc-main .text strong { font-weight: 750; color: #131C33; padding: 0 1px; }
+  .mc-sub { display: flex; gap: 8px; align-items: flex-start; padding-left: 17px; }
+  .mc-sub .dash { flex: none; margin-top: 9px; width: 7px; height: 1px; background: #55627D; }
+  .mc-sub .text { font-size: 12px; font-weight: 450; line-height: 1.5; color: #48556F;
+    word-break: keep-all; text-align: justify; }
+  .mc-footer { position: relative; margin-top: 21px; background: #1B2440;
+    padding: 13px 34px 16px 34px; }
+  .mc-footer .meta-row { position: relative; }
+  .mc-footer .src { font-size: 10px; line-height: 1.75; color: #FFFFFF; }
+  .mc-footer .src > div { white-space: normal; word-break: keep-all; overflow-wrap: anywhere;
+    padding-right: 100px; }
+  .mc-footer .logo { position: absolute; top: 0; right: 0;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: #DFE7F7; }
+</style></head><body class="$stb-htmlv3$"><div role="article" aria-roledescription="email" style="-webkit-text-size-adjust: 100%;-ms-text-size-adjust: 100%;padding: 20px 0px;margin: 0 auto;background:#ffffff;"><div style="height:0px;max-height:0px;border-width:0px;border: 0px;border-color:initial;border-image:initial;visibility:hidden;line-height:0px;font-size:0px;overflow:hidden;display:none;">과학기술·연구개발 분야에서 2주간의 주요 기사를 요약하여 보내드립니다.</div><table id="$beacon$"><tbody><tr><td></td></tr></tbody></table><table id="stb-container" role="presentation" style="width:100%;background:#ffffff;" border="0" bordercolor=""><tbody><tr><td align="center"><!--[if mso]> <table role="presentation" align="center" style="width:630px;"> <tr> <td> <div class="outer"> <![endif]--><!--[if !mso]><!--><div class="outer" style="width:100%;max-width:630px;margin: 0px auto;"><!--<![endif]-->
+<table role="presentation" class="stb-one-col" style="width: 100%;border:0;" cellpadding="0" cellspacing="0"><tbody><tr><td style="font-size:0;box-sizing:border-box;padding:25px 25px 5px 25px;">
+  <div class="mb-sheet">
+    <div class="mb-glow-tr"></div>
+    <div class="mb-glow-bl"></div>
+    <div class="mb-grid"></div>
+    <div class="mh-lockup">
+      <img src="{{ nrf_symbol }}" alt="NRF 심벌마크">
+      <div class="divider"></div>
+      <div class="org">한국연구재단</div>
+    </div>
+    <div class="mh-stripe"><div class="policy"></div><div class="tech"></div><div class="ethics"></div></div>
+    <div class="mh-title-block">
+      <div class="mh-title-row">
+        <div class="brief">AI Trend Brief</div>
+        <div class="week">{{ week_label }}</div>
+      </div>
+      <div class="mh-desc">과학기술·연구개발 AI 분야에서 2주간의 주요 기사를 요약하여 보여드립니다.</div>
+    </div>
+    <div class="mh-band">
+      <div class="notice">본 발간물은 생성형 AI로 초안을 작성한 뒤 담당자의 검수를 거쳐 발간되었습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 인용을 위해서는 원문을 확인해 주시기 바랍니다.</div>
+    </div>
+  </div>
+</td></tr></tbody></table>
+{%- for card in cards %}
+<table role="presentation" class="stb-one-col" style="width: 100%;border:0;" cellpadding="0" cellspacing="0"><tbody><tr><td style="font-size:0;box-sizing:border-box;padding:25px 25px 5px 25px;">
+  <div class="mb-sheet">
+    <div class="mb-glow-tr"></div>
+    <div class="mb-glow-bl"></div>
+    <div class="mb-grid"></div>
+    <div class="mc-header">
+      <div class="brand">
+        <div style="width:7px;height:7px;background:{{ card.accent }};box-shadow:0 0 8px {{ card.accent_glow }};"></div>
+        <div class="cat"><span>{{ card.category }}</span><span>·</span><span>{{ card.article_no }}</span></div>
+      </div>
+      {% if card.week_label %}<div class="week">{{ card.week_label }}</div>{% endif %}
+    </div>
+    <div class="mc-headline">
+      <div class="title">{{ card.title }}</div>
+      {% if card.subhead %}<div class="sub">{{ card.subhead }}</div>{% endif %}
+      <div class="rule"><div style="width:30px;height:2px;background:{{ card.accent }};"></div><div style="flex:1;height:1px;background:rgba(43,68,128,0.14);"></div></div>
+    </div>
+    <div class="mc-points">
+      {% for pt in card.points %}
+      <div class="mc-point">
+        <div class="mc-main">
+          <div style="flex:none;margin-top:7px;width:6px;height:6px;border-radius:2px;background:{{ card.accent }};"></div>
+          <div class="text">{{ pt.pre }}{% if pt.key %}<strong style="background:linear-gradient(transparent 68%, {{ card.accent_hl }} 68%);">{{ pt.key }}</strong>{{ pt.post }}{% endif %}</div>
+        </div>
+        {% if pt.sub %}
+        {% for s in ([pt.sub] if pt.sub is string else pt.sub) %}
+        <div class="mc-sub">
+          <div class="dash"></div>
+          <div class="text">{{ s }}</div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mc-footer">
+      <div class="meta-row">
+        <div class="src">{% for line in card.source_lines %}<div>{{ line }}</div>{% endfor %}</div>
+        <div class="logo">AI TREND BRIEF</div>
+      </div>
+    </div>
+  </div>
+</td></tr></tbody></table>
+{%- endfor %}
+<table width="100%" cellpadding="0" cellspacing="0" style="border:0;"><tbody><tr><td class="stb-text-box stb-permalink stb-footer" style="text-align:center;margin:0px;;line-height:1.7;word-break:break-word;font-size:12px;font-family:noto sans kr, noto sans cjk kr, noto sans cjk, Malgun Gothic, apple sd gothic neo, nanum gothic, malgun gothic, dotum, arial, helvetica, Meiryo, MS Gothic, sans-serif!important;-ms-text-size-adjust: 100%;-webkit-text-size-adjust: 100%;color:#747579;border:0;"><table border="0" cellpadding="0" cellspacing="0" style="width: 100%"><tbody><tr><td style="padding:5px 15px 25px 15px;text-align:center;"><div><span style="color: #000000; font-size: 16px; font-weight: bold;" class="stb-fore-colored stb-bold"></span><span style="color: #000000;" class="stb-fore-colored"><span style="font-weight: bold;" class="stb-bold">한국연구재단</span> (34113) 대전광역시 유성구 가정로 201 042-869-6114</span></div></td></tr></tbody></table></td></tr></tbody></table></div><!--[if mso]> </td> </tr> </table> <![endif]--></td></tr></tbody></table><div style="padding: 10pt 0cm 10pt 0cm;"><p class="MsoNormal" align="center" style="text-align: center;"><span lang="EN-US"></span></p></div></div></body></html>

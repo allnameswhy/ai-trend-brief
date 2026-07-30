@@ -53,6 +53,33 @@ def _raise_from_response(resp: httpx.Response) -> None:
         raise StibeeError(f"HTTP{resp.status_code}", resp.text[:200])
 
 
+def update_content(email_id: int, html: str) -> None:
+    """이메일 콘텐츠(본문 HTML)를 통째로 교체한다. (POST /emails/{id}/content, 본문 = HTML 그대로)
+    작성 중 상태의 일반 이메일만 가능 — 아니면 Errors.Email.WrongStatus.
+    본문에 data URI 이미지가 있으면 수 MB가 될 수 있어 타임아웃을 길게 잡는다."""
+    resp = httpx.post(
+        f"{BASE_URL}/emails/{email_id}/content",
+        headers={"AccessToken": _api_key(), "Content-Type": "text/html; charset=utf-8"},
+        content=html.encode("utf-8"),
+        timeout=60.0,
+    )
+    if resp.status_code != 200:
+        _raise_from_response(resp)
+
+
+def get_content(email_id: int) -> str:
+    """스티비에 저장된 이메일 콘텐츠(HTML)를 되읽는다. (GET /emails/{id}/content)
+    탑재 결과 확인용 — 스티비가 이미지 src 를 어떻게 저장했는지 여기서 보인다."""
+    resp = httpx.get(
+        f"{BASE_URL}/emails/{email_id}/content",
+        headers={"AccessToken": _api_key()},
+        timeout=60.0,
+    )
+    if resp.status_code != 200:
+        _raise_from_response(resp)
+    return resp.text
+
+
 def create_email(subject: str) -> int:
     """일반 이메일(초안)을 생성하고 스티비 이메일 아이디를 반환한다. (POST /emails)
     제목·발신자·주소록만 채운 빈 이메일 — 콘텐츠·발송은 이후 단계. 동기 함수라
