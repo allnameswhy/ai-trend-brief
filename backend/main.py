@@ -4,7 +4,7 @@ FastAPI 서버 (HITL 대시보드 백엔드 — PROJECT_NOTES 2.6)
 역할: 파이프라인을 두 단계로 나눠 실행하고, 단계 사이에 사람의 확인을 끼워 넣는다.
   [1단계] 조사자→편집장 → '선정 대기' → 사람이 기사 선정 확정
   [2단계] 작가→검토자(+반려 수정 1회) → '카드 검토 대기' → 사람이 카드 확인·수정
-  [발행]  PNG 렌더까지만 — 메일 발송은 구현하지 않는다 (자동 발송 금지, HITL)
+  [발행]  PNG 렌더 → 스티비 이메일 초안 생성(버튼, /mail/draft)까지 — 발송은 구현하지 않는다 (자동 발송 금지, HITL)
 
 진행 상황은 SSE(Server-Sent Events)로 브라우저에 실시간 스트리밍한다.
 이벤트는 JSON 구조: {"id", "type", "agent", "message", ...}
@@ -49,6 +49,7 @@ from backend.orchestrator import (
     run_phase2,
 )
 from backend import card_service
+from backend import stibee
 
 INDEX_HTML = PROJECT_ROOT / "frontend" / "index.html"
 RUNS_DIR = PROJECT_ROOT / "data" / "runs"
@@ -198,7 +199,7 @@ async def _phase_task(phase: str, resume: bool) -> None:
 
 
 async def _publish_task() -> None:
-    """발행: 전 카드 PNG 렌더 → done. (메일 발송 없음 — 자동 발송 금지, HITL)
+    """발행: 전 카드 PNG 렌더 → done. (메일은 이후 버튼으로 초안만 생성 — 발송 없음, 자동 발송 금지)
     렌더는 동기 subprocess 라 to_thread 로 감싼다 — 렌더 중에도 SSE 가 멎지 않게."""
     rd = run_dir_path()
     logger = make_logger(rd, on_log)
@@ -214,7 +215,7 @@ async def _publish_task() -> None:
                    f"PNG 누락 {len(missing)}건: {', '.join(missing)} — 렌더 실패, 위 로그의 오류 확인")
         logger("orchestrator", f"PNG 상태: {made}/{n}건 존재")
         logger("orchestrator",
-               f"발행 완료 — PNG 를 확인하세요: {rd} (메일 발송은 미구현 — 확인 후 수동 발송)")
+               f"발행 완료 — PNG 를 확인하세요: {rd} (확인 후 [메일 초안 생성] — 발송은 스티비 화면에서 수동)")
         set_state("done")
     except Exception as e:
         logger("orchestrator", f"발행 중 오류: {e!r}")
@@ -416,7 +417,7 @@ async def reset_run():
 
 @app.post("/publish")
 async def publish():
-    """발행 — 전 카드 PNG 렌더까지만. 메일 발송은 미구현(자동 발송 금지, HITL)."""
+    """발행 — 전 카드 PNG 렌더까지. 메일은 /mail/draft 로 초안만 생성(발송은 미구현 — 자동 발송 금지)."""
     if current["task"] is not None or current["state"] in RUNNING_STATES:
         return JSONResponse({"status": "busy", "error": "이미 실행 중입니다"}, status_code=409)
     if current["state"] not in ("waiting_final_review", "done"):
@@ -424,6 +425,57 @@ async def publish():
                             status_code=409)
     current["task"] = asyncio.create_task(_publish_task())
     return {"status": "started"}
+
+
+@app.post("/mail/draft")
+async def create_mail_draft(request: Request):
+    """스티비에 이메일 초안 생성 — 제목·발신자·주소록만 채운 빈 이메일 (발송 아님).
+    발송은 여전히 미구현(자동 발송 금지, HITL). 생성된 id 는 이후 단계(콘텐츠·발송)가 쓴다."""
+    if current["task"] is not None or current["state"] in RUNNING_STATES:
+        return JSONResponse({"status": "busy", "error": "이미 실행 중입니다"}, status_code=409)
+    if current["state"] != "done":
+        return JSONResponse({"status": "invalid_state",
+                             "error": "메일 초안은 발행(PNG 렌더) 완료 후에만 생성할 수 있습니다"},
+                            status_code=409)
+    rd = run_dir_path()
+    # 호수는 발행 시점에 render_cards 가 헤더·전 카드에 통일한 값 — card_01.json 에서 읽는다
+    card_file = rd / "card_01.json"
+    if not card_file.exists():
+        return JSONResponse({"error": "card_01.json 이 없습니다 — 발행을 먼저 실행하세요"}, status_code=409)
+    week_label = json.loads(card_file.read_text(encoding="utf-8")).get("week_label", "").strip()
+    if not week_label:
+        return JSONResponse({"error": "card_01.json 에 week_label 이 없습니다"}, status_code=409)
+
+    force = False
+    try:
+        payload = await request.json()
+        force = bool(isinstance(payload, dict) and payload.get("force"))
+    except Exception:
+        pass   # 본문 없이 불러도 됨
+    mail_file = rd / "stibee_email.json"
+    if mail_file.exists() and not force:
+        prev = json.loads(mail_file.read_text(encoding="utf-8"))
+        return JSONResponse({"status": "already_created", "id": prev.get("email_id"),
+                             "error": f"이미 초안이 생성돼 있습니다 (id {prev.get('email_id')})"},
+                            status_code=409)
+
+    subject = stibee.SUBJECT_TEMPLATE.format(week_label=week_label)
+    try:
+        email_id = await asyncio.to_thread(stibee.create_email, subject)
+    except stibee.StibeeError as e:
+        push_event("error", agent="orchestrator", message=f"스티비 초안 생성 실패: {e}")
+        return JSONResponse({"status": "stibee_error", "error": f"스티비 오류: {e}"}, status_code=502)
+    except Exception as e:   # 네트워크 단절 등 httpx 예외
+        push_event("error", agent="orchestrator", message=f"스티비 호출 실패: {e!r}")
+        return JSONResponse({"status": "stibee_error", "error": f"스티비 호출 실패: {e}"}, status_code=502)
+
+    mail_file.write_text(json.dumps(
+        {"email_id": email_id, "subject": subject,
+         "created_at": datetime.now().isoformat(timespec="seconds")},
+        ensure_ascii=False, indent=2), encoding="utf-8")
+    push_event("log", agent="orchestrator",
+               message=f"스티비 초안 생성 완료 — id {email_id}, 제목 \"{subject}\" (발송 아님 — 발송은 스티비 화면에서)")
+    return {"status": "ok", "id": email_id, "subject": subject}
 
 
 # ── 기사 선정 (1단계 후 HITL) ─────────────────────────────────────────────

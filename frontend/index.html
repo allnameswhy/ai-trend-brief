@@ -247,8 +247,8 @@
     </details>
     <div class="pubBar">
       <button id="btnPublish" class="btn" disabled>발행 — PNG 생성</button>
-      <button class="btn" disabled>메일 발송</button>
-      <span class="pubNote">메일 발송은 미구현 — PNG 확인 후 수동 발송 (자동 발송 금지)</span>
+      <button id="btnMail" class="btn" disabled>메일 초안 생성 (스티비)</button>
+      <span class="pubNote">초안 생성까지 자동 — 발송은 스티비 화면에서 확인 후 수동 (자동 발송 금지)</span>
     </div>
   </section>
 
@@ -356,6 +356,7 @@
     $('btnCancel').disabled = !(ST.state === 'phase1_running' || ST.state === 'phase2_running');
     $('btnReset').disabled = busy || !ST.state || ST.state === 'idle';
     $('btnPublish').disabled = !(ST.state === 'waiting_final_review' || ST.state === 'done');
+    $('btnMail').disabled = ST.state !== 'done';
 
     $('selectionPanel').classList.toggle('hidden', ST.state !== 'waiting_selection');
     const showCards = ['waiting_final_review','rendering','done'].includes(ST.state);
@@ -638,9 +639,27 @@
     }
   };
   $('btnPublish').onclick = async () => {
-    if (!confirm('모든 카드를 PNG 로 렌더합니다 (발행). 진행할까요?\n※ 메일 발송은 하지 않습니다 — PNG 확인 후 수동 발송.')) return;
+    if (!confirm('모든 카드를 PNG 로 렌더합니다 (발행). 진행할까요?\n※ 메일 발송은 하지 않습니다 — PNG 확인 후 [메일 초안 생성].')) return;
     const r = await fetch('/publish', {method:'POST'});
     if (!r.ok) alertResp(r);
+  };
+  async function postMailDraft(force){
+    return fetch('/mail/draft', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({force: !!force})});
+  }
+  $('btnMail').onclick = async () => {
+    if (!confirm('스티비에 이메일 초안을 생성합니다 (발송 아님). 진행할까요?')) return;
+    let r = await postMailDraft(false);
+    if (r.status === 409){
+      let j = null;
+      try { j = await r.clone().json(); } catch (e) {}
+      if (j && j.status === 'already_created'){
+        if (!confirm('이미 초안이 있습니다 (id ' + j.id + '). 하나 더 만들까요?')) return;
+        r = await postMailDraft(true);
+      }
+    }
+    if (!r.ok) alertResp(r);
+    // 성공 로그는 서버가 SSE 로 밀어준다 ("스티비 초안 생성 완료 — id …")
   };
 
   // ── 인증 ──────────────────────────────────────────────────
