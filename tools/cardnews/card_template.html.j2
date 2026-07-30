@@ -73,9 +73,11 @@
   .footer .inner { }
   /* 겹침 방식: 출처가 길어도 로고를 밀어내지 않도록, 로고를 오른쪽 위에 절대 배치로 고정 */
   .footer .meta-row { position: relative; }
-  .footer .src { font-size: 15.5px; line-height: 1.75; color: #FFFFFF; white-space: nowrap; }
-  /* 첫 줄(원문 제목)만 로고(폭 141px)와 겹치기 전에 줄바꿈 — 나머지 줄은 한 줄 고정 유지 */
-  .footer .src .line-title { white-space: normal; word-break: keep-all; padding-right: 170px; }
+  .footer .src { font-size: 15.5px; line-height: 1.75; color: #FFFFFF; }
+  /* 모든 출처 줄은 워드마크(폭 141px) 왼쪽 경계에서 줄바꿈 — 오른쪽 170px를 비워 둔다.
+     overflow-wrap:anywhere — URL처럼 공백 없는 긴 토큰도 경계에서 강제 분리(없으면 카드 밖으로 잘림) */
+  .footer .src > div { white-space: normal; word-break: keep-all; overflow-wrap: anywhere;
+    padding-right: 170px; }
   .footer .logo { position: absolute; top: 0; right: 0;
     font-size: 16px; font-weight: 700; letter-spacing: 0.1em; color: #DFE7F7; }
   .footer .disclaimer { margin-top: 14px; font-size: 14.5px; font-weight: 400; line-height: 1.5; color: #DFE7F7;
@@ -126,8 +128,8 @@
   <div class="footer">
     <div class="inner">
       <div class="meta-row">
-        {# 줄마다 div — 첫 줄(원문 제목)만 line-title 로 줄바꿈 허용 #}
-        <div class="src">{% for line in source_lines %}<div{% if loop.first %} class="line-title"{% endif %}>{{ line }}</div>{% endfor %}</div>
+        {# 줄마다 div — 모든 줄이 워드마크 경계에서 줄바꿈 (스타일은 .src > div) #}
+        <div class="src">{% for line in source_lines %}<div>{{ line }}</div>{% endfor %}</div>
         <div class="logo">AI TREND BRIEF</div>
       </div>
       <div class="disclaimer">본 발간물은 생성형 AI로 초안을 작성한 뒤 담당자의 검수를 거쳐 발간되었습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 인용을 위해서는 원문을 확인해 주시기 바랍니다.</div>
