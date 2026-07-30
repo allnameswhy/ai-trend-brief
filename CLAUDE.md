@@ -29,12 +29,17 @@
   `run_phase1`/`run_phase2`/`render_cards`로 분해(CLI `run_pipeline` 동작 불변), 산출물 누락은 `PipelineError`,
   상태는 run 폴더 `state.json`(서버 기록·재시작 복원), 중단 버튼(서브프로세스 정리 실측 확인), 오류·중단 복구
   3단계(편집장부터/카드부터 재개), 초기화 버튼(run 버리기 — `discarded` 표식으로 복원 제외, 폴더는 보존). 편집장이 `screened.json`(게이트 통과 url 목록) 추가 산출 — 선정 화면 후보 풀.
-  사람 수정 백업: `selected_editor.json`·`card_NN_orig.json`. 메일 발송 버튼은 미구현 표시(자동 발송 금지 유지).
+  사람 수정 백업: `selected_editor.json`·`card_NN_orig.json`.
   세부는 PROJECT_NOTES 0장·2.6·2.8.2. **주의: 발간 실행 시 uvicorn 은 `--reload` 없이**
 - **발간 헤더 추가 (2026-07-30)**: 카드 묶음 맨 위 마스트헤드 `header.png`(1080×380, `tools/cardnews/header_template.html.j2`,
   사용자 확정 시안 재현). `render_cards`가 발행 시점 호수를 `month_week_label()`로 재계산해 **호수가 다른 카드 JSON 을
   갱신(호수 통일)**하고 헤더를 렌더(`build_cardnews.py --header "N월 N주"`). 세부는 PROJECT_NOTES 2.8.2·2.9
-- 데모 범위에서 제외(추후 과제): 스케줄링, 이메일 발송, SQLite DB, 기록 관리자(⑤) 아카이브 참조
+- **메일 발송 방식 확정 (2026-07-30 팀 결정)**: 스티비(Stibee) API 자동 발송 구상 **전면 폐기** — 발송은
+  **사람이 스티비 웹에서 렌더된 PNG 를 직접 업로드**해 진행. **대시보드 역할은 PNG 렌더에서 끝난다.**
+  (실험 결과: v2 API 에 이미지 업로드 엔드포인트 없음, data URI 내장 본문(약 18MB)은 기관 메일에서 표시 불가.
+  관련 코드·템플릿(`backend/stibee.py`, `tools/build_mail_html.py`, 메일 템플릿 2종)·httpx 의존성 제거. 세부는 PROJECT_NOTES 2.9)
+- 데모 범위에서 제외(추후 과제): 스케줄링, SQLite DB, 기록 관리자(⑤) 아카이브 참조
+  (이메일 발송은 추후 과제가 아니라 **수동으로 확정** — 위 2026-07-30 항목)
 - 원본 PDF 저장소: 데모 단계는 로컬(gitignore 폴더), 정식 운영 시 AWS S3 검토(20GB 기준 월 1천 원 미만, PROJECT_NOTES 3장 #3)
 
 ## 구조
