@@ -32,7 +32,7 @@
 
   /* 헤더 */
   .header { position: relative; display: flex; align-items: center; justify-content: space-between;
-    padding: 52px 64px 0 64px; }
+    padding: 40px 64px 0 64px; }
   .header .brand { display: flex; align-items: center; gap: 14px; }
   .header .dot { width: 12px; height: 12px; background: {{ accent }}; box-shadow: 0 0 14px {{ accent_glow }}; }
   .header .cat { display: flex; align-items: baseline; gap: 10px;
@@ -41,7 +41,7 @@
     border: 1px solid rgba(90,107,140,0.4); padding: 8px 20px; border-radius: 999px; }
 
   /* 헤드라인 블록 — 한 줄 제목 + 부제 + 강조색 구분선 */
-  .headline { position: relative; padding: 60px 64px 0 64px; }
+  .headline { position: relative; padding: 45px 64px 0 64px; }
   .headline .title { font-size: 64px; font-weight: 800; line-height: 1.18;
     letter-spacing: -0.02em; color: #131C33; white-space: nowrap; }
   .headline .sub { margin-top: 20px; font-size: 27px; font-weight: 500; line-height: 1.3;
@@ -67,18 +67,19 @@
   .pt-sub .text { font-size: 22px; font-weight: 450; line-height: 1.5; color: #48556F;
     word-break: keep-all; text-align: justify; text-justify: inter-character; }
 
-  /* 하단 출처 메타 + AI 작성 고지 */
-  .footer { position: relative; margin-top: auto; padding: 0 64px 44px 64px; }
-  .footer .inner { border-top: 1px solid rgba(43,68,128,0.16); padding-top: 22px; }
+  /* 하단 출처 메타 + AI 작성 고지 — 다크 반전(네이비 밴드, 이메일 압축에도 대비 유지) */
+  .footer { position: relative; margin-top: auto; background: #1B2440;
+    padding: 25px 64px 30px 64px; }
+  .footer .inner { }
   /* 겹침 방식: 출처가 길어도 로고를 밀어내지 않도록, 로고를 오른쪽 위에 절대 배치로 고정 */
   .footer .meta-row { position: relative; }
-  .footer .src { font-size: 13px; line-height: 1.7; color: #8792A8; white-space: nowrap; }
+  .footer .src { font-size: 15.5px; line-height: 1.75; color: #FFFFFF; white-space: nowrap; }
   /* 첫 줄(원문 제목)만 로고(폭 141px)와 겹치기 전에 줄바꿈 — 나머지 줄은 한 줄 고정 유지 */
   .footer .src .line-title { white-space: normal; word-break: keep-all; padding-right: 170px; }
   .footer .logo { position: absolute; top: 0; right: 0;
-    font-size: 16px; font-weight: 700; letter-spacing: 0.1em; color: #8792A8; }
-  .footer .disclaimer { margin-top: 16px; font-size: 12px; line-height: 1.55; color: #A6AFC0;
-    word-break: keep-all; text-align: justify; text-justify: inter-character; }
+    font-size: 16px; font-weight: 700; letter-spacing: 0.1em; color: #DFE7F7; }
+  .footer .disclaimer { margin-top: 14px; font-size: 14.5px; font-weight: 400; line-height: 1.5; color: #DFE7F7;
+    letter-spacing: -0.03em; white-space: nowrap; }
 </style>
 </head>
 <body>
