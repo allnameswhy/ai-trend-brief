@@ -237,7 +237,6 @@ def validate_card(card: dict) -> list[str]:
     need(isinstance(source, list) and len(source) == 3, "source는 정확히 3줄")
     if isinstance(source, list) and len(source) == 3:
         need(source[0].startswith("원문 제목 : "), "source 1줄은 '원문 제목 : '으로 시작")
-        need(len(source[0]) <= 100, f"source 1줄은 100자 이하(현재 {len(source[0])}자) — 한 줄 고정")
         need(bool(re.fullmatch(r"발간처\(발간일\) : .+\(\d{2}\.\d{2}\.\d{2}\.\)", source[1])),
              "source 2줄은 '발간처(발간일) : 매체(YY.MM.DD.)' 형식")
         need(bool(re.match(r"URL : (?!https?://).+", source[2])), "source 3줄은 'URL : '로 시작(프로토콜 생략)")

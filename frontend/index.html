@@ -593,9 +593,13 @@
     const f = $('editForm');
     const points = [];
     f.querySelectorAll('#ptBox fieldset.pt').forEach(fs => {
-      const pre = fs.querySelector('.p-pre').value.trim();
+      // pre·post는 trim 금지 — 렌더는 pre+key+post를 그대로 이어 붙이므로
+      // pre 끝·post 앞 공백이 단어 경계다. trim은 빈칸 판정에만 쓴다.
+      const preRaw = fs.querySelector('.p-pre').value;
+      const postRaw = fs.querySelector('.p-post').value;
+      const pre = preRaw.trim() ? preRaw : '';
+      const post = postRaw.trim() ? postRaw : '';
       const key = fs.querySelector('.p-key').value.trim();
-      const post = fs.querySelector('.p-post').value.trim();
       const subLines = fs.querySelector('.p-sub').value.split('\n').map(s => s.trim()).filter(Boolean);
       const pt = key ? {pre:pre, key:key, post:post} : {pre: pre + post};
       if (subLines.length === 1) pt.sub = subLines[0];
