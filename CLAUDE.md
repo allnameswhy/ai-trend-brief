@@ -34,6 +34,11 @@
 - **발간 헤더 추가 (2026-07-30)**: 카드 묶음 맨 위 마스트헤드 `header.png`(1080×380, `tools/cardnews/header_template.html.j2`,
   사용자 확정 시안 재현). `render_cards`가 발행 시점 호수를 `month_week_label()`로 재계산해 **호수가 다른 카드 JSON 을
   갱신(호수 통일)**하고 헤더를 렌더(`build_cardnews.py --header "N월 N주"`). 세부는 PROJECT_NOTES 2.8.2·2.9
+- **발간 표지 추가 (2026-08-05)**: 표지 `cover.png`(1080×1240, `tools/cardnews/cover_template.html.j2`, 사용자 확정
+  시안 재현) — 호수 + **목차**(카테고리별 카드 title, 카드가 모두 완성된 뒤 run 폴더의 card_NN.json 을 코드가 직접
+  읽어 채움. 에이전트 호출 없음)를 담고 안내문 등 나머지 문구는 하드코딩. 발행(PNG 렌더) 시 `render_cards`가
+  **헤더·표지 둘 다 생성**(`--header`/`--cover`)하고, 어느 것을 카드 묶음 맨 위에 쓸지는 사람이 발송 때 고른다.
+  세부는 PROJECT_NOTES 2.8.2·2.9
 - **메일 발송 방식 확정 (2026-07-30 팀 결정)**: 스티비(Stibee) API 자동 발송 구상 **전면 폐기** — 발송은
   **사람이 스티비 웹에서 렌더된 PNG 를 직접 업로드**해 진행. **대시보드 역할은 PNG 렌더에서 끝난다.**
   (실험 결과: v2 API 에 이미지 업로드 엔드포인트 없음, data URI 내장 본문(약 18MB)은 기관 메일에서 표시 불가.
@@ -50,7 +55,7 @@ backend/main.py          # FastAPI: 상태 머신(선정 대기·카드 검토 �
 backend/card_service.py  # build_cardnews 인프로세스 래퍼: 프리뷰 HTML 렌더·자수 검사·종합(Edge 실측) 검사
 frontend/index.html      # HITL 대시보드: 제어·로그 / 기사 선정 / 카드 검토·편집 3화면 (프레임워크 없는 순수 HTML)
 tools/build_cardnews.py  # 카드 렌더(HTML→PNG)와 규격 기계 검사(--check). 렌더는 오케스트레이터가 직접 실행, 검토자만 --check용 Bash 허용
-tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본) · header_template.html.j2(발간 헤더) · nrf-symbol.png(심벌)
+tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본) · header_template.html.j2(발간 헤더) · cover_template.html.j2(발간 표지 — 호수·목차) · nrf-symbol.png(심벌)
 tools/test_writer_*.py   # 기사 1건짜리 부분 테스트 하네스 (아래 규칙 8)
 data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json+screened.json) → card_NN.json(+html/png) → review.md. 대시보드 run은 state.json(상태)·selected_editor.json(편집장 원안 백업)·card_NN_orig.json(작가 원본 백업) 추가
 data/tests/<timestamp>/  # 테스트 산출물 (run 과 같은 구조, 규칙 8)

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 폰트: Pretendard(카드 템플릿과 동일). 오프라인/차단 시 맑은 고딕으로 대체됨 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #101319; }
+
+  /* ── 표지 본체 (1080 × 1240) — 카드 묶음 맨 앞, 호수·목차 포함 (구 발간 헤더 대체) ── */
+  .cover {
+    width: 1080px; height: 1240px; position: relative; overflow: hidden;
+    background: linear-gradient(158deg, #F7F8FC 0%, #EDF1FA 46%, #E6EDFB 72%, #F1F4FA 100%);
+    font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', sans-serif;
+    color: #17203A; display: flex; flex-direction: column;
+  }
+
+  /* 은은한 광원·격자 — 카드 템플릿과 동일한 배경 시스템 */
+  .glow-tr { position: absolute; top: -220px; right: -180px; width: 640px; height: 640px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(62,109,232,0.14) 0%, rgba(62,109,232,0) 68%); }
+  .glow-bl { position: absolute; bottom: -260px; left: -200px; width: 700px; height: 700px;
+    border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle, rgba(38,178,255,0.10) 0%, rgba(38,178,255,0) 70%); }
+  .grid { position: absolute; inset: 0; pointer-events: none;
+    background-image: linear-gradient(rgba(43,68,128,0.05) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(43,68,128,0.05) 1px, transparent 1px);
+    background-size: 72px 72px; }
+
+  /* 상단 3색 스트라이프 — 정책/기술/윤리 세 카테고리 상징 (순서 고정) */
+  .stripe { position: absolute; top: 0; left: 0; right: 0; height: 10px; display: flex;
+    pointer-events: none; }
+  .stripe .policy { flex: 1; background: #3E6DE8; }
+  .stripe .tech   { flex: 1; background: #0EA79E; }
+  .stripe .ethics { flex: 1; background: #7C64EE; }
+
+  /* 기관 lockup — 왼쪽 NRF 심벌 + 구분선 + 기관명, 오른쪽 발행 부서 */
+  .lockup { position: relative; display: flex; align-items: center; justify-content: space-between;
+    padding: 44px 64px 0 64px; }
+  .lockup .org-group { display: flex; align-items: center; gap: 16px; }
+  .lockup img { height: 46px; display: block; }
+  .lockup .divider { width: 1px; height: 30px; background: rgba(43,68,128,0.22); }
+  .lockup .org { font-size: 20px; font-weight: 700; letter-spacing: 0.02em; color: #33415E; }
+  .lockup .team { text-align: right; font-size: 24px; font-weight: 750; letter-spacing: 0.02em;
+    color: #33415E; }
+
+  /* 표지 타이틀 — 브리프명 + 호수(week_label) */
+  .title-block { position: relative; padding: 36px 64px 0 64px; }
+  .title-row { display: flex; align-items: baseline; gap: 26px; }
+  .title-row .brief { font-size: 106px; font-weight: 800; line-height: 1.0;
+    letter-spacing: -0.03em; color: #131C33; white-space: nowrap; }
+  .title-row .week { flex: none; font-size: 40px; font-weight: 800;
+    letter-spacing: -0.01em; color: #131C33; }
+
+  /* ── 목차 영역 — 남는 높이에 세로 중앙 정렬 ── */
+  .contents { position: relative; flex: 1; display: flex; flex-direction: column;
+    justify-content: center; gap: 44px; padding: 24px 64px 34px 64px; }
+  .contents-label { display: flex; align-items: center; gap: 16px; }
+  .contents-label .chips { display: flex; gap: 4px; }
+  .contents-label .chips div { width: 18px; height: 5px; }
+  .contents-label .chips .policy { background: #3E6DE8; }
+  .contents-label .chips .tech   { background: #0EA79E; }
+  .contents-label .chips .ethics { background: #7C64EE; }
+  .contents-label .word { font-size: 16px; font-weight: 800; letter-spacing: 0.22em; color: #33415E; }
+
+  /* 2열 격자 — 첫 칸은 안내문(고정 문구), 나머지 칸에 카테고리 그룹(순서는 collect_toc가 결정) */
+  .toc-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 56px; row-gap: 80px; }
+
+  .notice { display: flex; flex-direction: column; gap: 20px; }
+  .notice .ai { background: #1B2440; padding: 16px 18px; font-size: 23px; font-weight: 450;
+    line-height: 1.55; color: #EAF0FC; letter-spacing: -0.02em; word-break: keep-all;
+    text-align: justify; text-justify: inter-character; }
+  .notice .intro { font-size: 23px; font-weight: 450; line-height: 1.62; color: #2E3B58;
+    word-break: keep-all; text-align: justify; text-justify: inter-character; }
+  .notice .intro strong { font-weight: 750; color: #131C33; }
+
+  .toc-group { display: flex; flex-direction: column; gap: 18px; }
+  .toc-head { display: flex; align-items: center; gap: 14px; }
+  .toc-head .dot { width: 13px; height: 13px; }   /* 색·글로우는 그룹별 인라인(accent) */
+  .toc-head .label { font-size: 23px; font-weight: 800; letter-spacing: 0.16em; color: #33415E; }
+  .toc-items { display: flex; flex-direction: column; gap: 14px; padding-left: 27px; }
+  .toc-item { display: flex; align-items: baseline; gap: 16px; }
+  .toc-item .no { flex: none; width: 26px; font-size: 22px; font-weight: 600; color: #8D99B3;
+    font-variant-numeric: tabular-nums; }
+  .toc-item .t { font-size: 28px; font-weight: 600; line-height: 1.35; color: #1F2B47;
+    word-break: keep-all; }
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="glow-tr"></div>
+  <div class="glow-bl"></div>
+  <div class="grid"></div>
+  <div class="stripe"><div class="policy"></div><div class="tech"></div><div class="ethics"></div></div>
+
+  <div class="lockup">
+    <div class="org-group">
+      <img src="{{ nrf_symbol }}" alt="NRF 심벌마크">
+      <div class="divider"></div>
+      <div class="org">한국연구재단</div>
+    </div>
+    <div class="team">AI·정책기획팀</div>
+  </div>
+
+  <div class="title-block">
+    <div class="title-row">
+      <div class="brief">AI Trend Brief</div>
+      <div class="week">{{ week_label }}</div>
+    </div>
+  </div>
+
+  <div class="contents">
+    <div class="contents-label">
+      <div class="chips"><div class="policy"></div><div class="tech"></div><div class="ethics"></div></div>
+      <div class="word">CONTENTS</div>
+    </div>
+    <div class="toc-grid">
+      <div class="notice">
+        <div class="ai">본 발간물은 생성형 AI로 초안을 작성한 뒤 담당자의 검수를 거쳐 발간되었습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 인용을 위해서는 원문을 확인해 주시기 바랍니다.</div>
+        <div class="intro">AI·정책기획팀에서는 재단의 학술 연구 지원 혁신을 위한 아젠다 발굴 및 대안 모색을 위한 기초자료 중 하나로, 국외 AI 정책·기술 동향 등을 조사하여 <strong>AI Trend Brief</strong>를 제공합니다.</div>
+      </div>
+      {% for grp in toc %}
+      <div class="toc-group">
+        <div class="toc-head">
+          <div class="dot" style="background: {{ grp.accent }}; box-shadow: 0 0 14px {{ grp.glow }};"></div>
+          <div class="label">{{ grp.label }}</div>
+        </div>
+        <div class="toc-items">
+          {% for it in grp.articles %}
+          <div class="toc-item">
+            <div class="no">{{ it.no }}</div>
+            <div class="t">{{ it.title }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+</body>
+</html>

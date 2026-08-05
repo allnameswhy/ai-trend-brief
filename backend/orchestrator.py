@@ -187,7 +187,7 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
 
 
 def month_week_label(now: datetime) -> str:
-    """발행 주차 표기 — 그 달의 몇 번째 7일 구간 (예: '8월 1주'). 헤더·카드 호수의 단일 원천."""
+    """발행 주차 표기 — 그 달의 몇 번째 7일 구간 (예: '8월 1주'). 표지·카드 호수의 단일 원천."""
     return f"{now.month}월 {(now.day - 1) // 7 + 1}주"
 
 
@@ -422,10 +422,13 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
 
 
 def render_cards(run_dir: Path, count: int, on_log) -> None:
-    """확정된 카드(card_01 ~ card_NN)와 발간 헤더를 PNG로 렌더한다 — 오케스트레이터가 직접 실행.
+    """확정된 카드(card_01 ~ card_NN)와 발간 헤더·표지를 PNG로 렌더한다 — 오케스트레이터가 직접 실행.
     렌더는 판단이 필요 없는 결정적 작업이라 에이전트를 쓰지 않는다 (2026-07-20 변경).
-    호수는 발행(렌더) 시점에 다시 계산해 헤더와 전 카드에 통일한다 (2026-07-30 변경 —
-    집필과 발행이 주가 다르면 카드 알약·헤더 표시가 어긋나므로, 발행일 기준으로 맞춘다).
+    호수는 발행(렌더) 시점에 다시 계산해 헤더·표지와 전 카드에 통일한다 (2026-07-30 변경 —
+    집필과 발행이 주가 다르면 카드 알약·헤더/표지 표시가 어긋나므로, 발행일 기준으로 맞춘다).
+    표지 cover.png(1080×1240)는 호수와 목차(카테고리별 카드 title)를 담고, build_cardnews --cover 가
+    run 폴더의 card_NN.json 을 직접 읽어 목차를 채운다 (2026-08-05 추가 — 에이전트 호출 없음).
+    헤더(1080×380)·표지 둘 다 만들어 두고, 어느 것을 카드 묶음 맨 위에 쓸지는 사람이 발송 때 고른다.
     한 카드가 실패해도 나머지는 계속 시도한다 (PNG는 전 카드 생성 원칙, 최종 확인은 사람).
     ※ 동기 함수 — 서버(main.py)에서는 asyncio.to_thread 로 감싸 이벤트 루프를 막지 않는다."""
     tool = PROJECT_ROOT / "tools" / "build_cardnews.py"
@@ -446,18 +449,20 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
     if updated:
         on_log("orchestrator", f"호수 통일: '{label}' — 카드 {updated}건 갱신", "log")
 
-    # ② 발간 헤더 렌더 (실패해도 카드 렌더는 계속)
-    proc = subprocess.run(
-        [sys.executable, str(tool), "--header", label],
-        cwd=str(run_dir), capture_output=True, text=True,
-        encoding="utf-8", errors="replace",
-    )
-    if proc.returncode == 0:
-        on_log("orchestrator", "렌더 완료: header", "log")
-    else:
-        lines = (proc.stderr or proc.stdout or "").strip().splitlines()
-        detail = lines[-1] if lines else "출력 없음"
-        on_log("orchestrator", f"렌더 실패: header (exit={proc.returncode}) — {detail}", "log")
+    # ② 발간 헤더·표지 렌더 (실패해도 카드 렌더는 계속) — 둘 다 만들어 두고 사람이 발송 때 골라 쓴다.
+    #    표지 목차가 카드 title을 읽으므로 ① 호수 통일 뒤에 실행
+    for flag, name in (("--header", "header(발간 헤더)"), ("--cover", "cover(표지)")):
+        proc = subprocess.run(
+            [sys.executable, str(tool), flag, label],
+            cwd=str(run_dir), capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+        )
+        if proc.returncode == 0:
+            on_log("orchestrator", f"렌더 완료: {name}", "log")
+        else:
+            lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+            detail = lines[-1] if lines else "출력 없음"
+            on_log("orchestrator", f"렌더 실패: {name} (exit={proc.returncode}) — {detail}", "log")
 
     # ③ 카드 렌더
     for idx in range(1, count + 1):
