@@ -57,7 +57,7 @@ frontend/index.html      # HITL 대시보드: 제어·로그 / 기사 선정 / �
 tools/build_cardnews.py  # 카드 렌더(HTML→PNG)와 규격 기계 검사(--check). 렌더는 오케스트레이터가 직접 실행, 검토자만 --check용 Bash 허용
 tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2(디자인) · card_v2_sample.json(견본) · header_template.html.j2(발간 헤더) · cover_template.html.j2(발간 표지 — 호수·목차) · nrf-symbol.png(심벌)
 tools/test_writer_*.py   # 기사 1건짜리 부분 테스트 하네스 (아래 규칙 8)
-data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json+screened.json) → card_NN.json(+html/png) → review.md. 대시보드 run은 state.json(상태)·selected_editor.json(편집장 원안 백업)·card_NN_orig.json(작가 원본 백업) 추가
+data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json+screened.json) → card_NN.json → review.md. 발행 산출물(header·cover·card_NN 의 HTML/PNG)은 publish/ 하위 폴더에 모음(2026-08-05). 대시보드 run은 state.json(상태)·selected_editor.json(편집장 원안 백업)·card_NN_orig.json(작가 원본 백업) 추가
 data/tests/<timestamp>/  # 테스트 산출물 (run 과 같은 구조, 규칙 8)
 logs/run_<timestamp>.log # 실행별 누적 작업 로그 (PROJECT_NOTES 2.10)
 docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드오프 문서 (예외: architecture.png 는 추적 중)

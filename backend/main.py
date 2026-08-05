@@ -41,6 +41,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 
 from backend.orchestrator import (
     PROJECT_ROOT,
+    PUBLISH_SUBDIR,
     PipelineError,
     make_logger,
     new_run_dir,
@@ -215,7 +216,7 @@ async def _publish_task() -> None:
                    f"PNG 누락 {len(missing)}건: {', '.join(missing)} — 렌더 실패, 위 로그의 오류 확인")
         logger("orchestrator", f"PNG 상태: {made}/{n}건 존재")
         logger("orchestrator",
-               f"발행 완료 — PNG 를 확인하세요: {rd} (발송은 스티비 화면에서 PNG 직접 업로드 — 자동 발송 없음)")
+               f"발행 완료 — PNG 를 확인하세요: {rd / PUBLISH_SUBDIR} (발송은 스티비 화면에서 PNG 직접 업로드 — 자동 발송 없음)")
         set_state("done")
     except Exception as e:
         logger("orchestrator", f"발행 중 오류: {e!r}")
@@ -498,7 +499,8 @@ async def get_cards():
             "category": card.get("category", ""),
             "title": card.get("title", ""),
             "subhead": card.get("subhead", ""),
-            "has_png": (rd / f"card_{nn}.png").exists(),
+            # 발행 산출물은 publish/ 하위(2026-08-05) — 구 run 은 루트에 있으므로 fallback
+            "has_png": (rd / PUBLISH_SUBDIR / f"card_{nn}.png").exists() or (rd / f"card_{nn}.png").exists(),
         })
     review = rd / "review.md"
     review_text = review.read_text(encoding="utf-8") if review.exists() else None

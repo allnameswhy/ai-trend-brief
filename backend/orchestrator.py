@@ -57,6 +57,7 @@ from claude_agent_sdk import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_DIR = PROJECT_ROOT / ".claude" / "agents"
 LOGS_DIR = PROJECT_ROOT / "logs"
+PUBLISH_SUBDIR = "publish"   # 발행(render_cards) 산출물 하위 폴더명 — run 루트의 중간 산출물과 분리 (2026-08-05)
 
 # 검토자가 실행하는 카드 도구 명령 (--check: 자수 검사·렌더 실측). tools/build_cardnews.py.
 # PNG 렌더도 같은 도구를 쓰지만 그것은 오케스트레이터가 직접 실행한다 (아래 render_cards).
@@ -401,7 +402,7 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
         if missing:
             logger("orchestrator",
                    f"PNG 누락 {len(missing)}건: {', '.join(missing)} — 렌더 실패, 위 로그의 오류 확인. "
-                   f"직접 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json")
+                   f"직접 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json --out {run_dir}\\{PUBLISH_SUBDIR}")
         logger("orchestrator", f"PNG 상태: {made}/{n}건 존재")
 
         logger("orchestrator", "파이프라인 종료")
@@ -409,9 +410,9 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
         # Human-in-the-loop: 자동 발송하지 않는다. 결과물 위치만 알려주고 사람의 판단을 기다린다.
         review = run_dir / "review.md"
         logger("orchestrator",
-               f"검토 대기: 카드 {n}건(PNG {made}건), 검토 로그={review} "
+               f"검토 대기: 카드 {n}건(PNG {made}건, 위치={run_dir / PUBLISH_SUBDIR}), 검토 로그={review} "
                f"— 검토 로그의 기계 검사 결과와 PNG를 확인하고 발송 여부를 결정하세요. (자동 발송 없음) "
-               f"직접 수정 시 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json")
+               f"직접 수정 시 렌더: python tools/build_cardnews.py {run_dir}\\card_XX.json --out {run_dir}\\{PUBLISH_SUBDIR}")
 
         result["cards"] = [str(run_dir / f"card_{idx:02d}.json") for idx in range(1, n + 1)]
         result["review"] = str(review)
@@ -429,6 +430,8 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
     표지 cover.png(1080×1240)는 호수와 목차(카테고리별 카드 title)를 담고, build_cardnews --cover 가
     run 폴더의 card_NN.json 을 직접 읽어 목차를 채운다 (2026-08-05 추가 — 에이전트 호출 없음).
     헤더(1080×380)·표지 둘 다 만들어 두고, 어느 것을 카드 묶음 맨 위에 쓸지는 사람이 발송 때 고른다.
+    발행 산출물(헤더·표지·카드 HTML/PNG)은 run 루트가 아니라 publish/ 하위 폴더에 모은다
+    (2026-08-05 — JSON 등 중간 산출물과 분리해 스티비 업로드용 파일만 한곳에).
     한 카드가 실패해도 나머지는 계속 시도한다 (PNG는 전 카드 생성 원칙, 최종 확인은 사람).
     ※ 동기 함수 — 서버(main.py)에서는 asyncio.to_thread 로 감싸 이벤트 루프를 막지 않는다."""
     tool = PROJECT_ROOT / "tools" / "build_cardnews.py"
@@ -449,11 +452,15 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
     if updated:
         on_log("orchestrator", f"호수 통일: '{label}' — 카드 {updated}건 갱신", "log")
 
+    # 발행 산출물은 publish/ 하위 폴더로 — 렌더 명령마다 --out 으로 지정 (cwd=run 폴더 기준 상대 경로)
+    (run_dir / PUBLISH_SUBDIR).mkdir(exist_ok=True)
+    on_log("orchestrator", f"발행 산출물 폴더: {run_dir / PUBLISH_SUBDIR}", "log")
+
     # ② 발간 헤더·표지 렌더 (실패해도 카드 렌더는 계속) — 둘 다 만들어 두고 사람이 발송 때 골라 쓴다.
     #    표지 목차가 카드 title을 읽으므로 ① 호수 통일 뒤에 실행
     for flag, name in (("--header", "header(발간 헤더)"), ("--cover", "cover(표지)")):
         proc = subprocess.run(
-            [sys.executable, str(tool), flag, label],
+            [sys.executable, str(tool), flag, label, "--out", PUBLISH_SUBDIR],
             cwd=str(run_dir), capture_output=True, text=True,
             encoding="utf-8", errors="replace",
         )
@@ -468,7 +475,7 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
     for idx in range(1, count + 1):
         card = f"card_{idx:02d}.json"
         proc = subprocess.run(
-            [sys.executable, str(tool), card],
+            [sys.executable, str(tool), card, "--out", PUBLISH_SUBDIR],
             cwd=str(run_dir), capture_output=True, text=True,
             encoding="utf-8", errors="replace",
         )
@@ -481,9 +488,10 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
 
 
 def png_status(run_dir: Path, count: int) -> tuple[int, list[str]]:
-    """렌더 결과 집계 — (생성된 PNG 수, 누락 카드 이름 목록)을 돌려준다."""
+    """렌더 결과 집계 — (생성된 PNG 수, 누락 카드 이름 목록)을 돌려준다.
+    PNG 는 발행 산출물 폴더(publish/)에서 찾는다 (2026-08-05 변경)."""
     missing = [f"card_{idx:02d}" for idx in range(1, count + 1)
-               if not (run_dir / f"card_{idx:02d}.png").exists()]
+               if not (run_dir / PUBLISH_SUBDIR / f"card_{idx:02d}.png").exists()]
     return count - len(missing), missing
 
 
