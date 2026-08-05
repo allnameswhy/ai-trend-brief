@@ -247,6 +247,10 @@
     </details>
     <div class="pubBar">
       <button id="btnPublish" class="btn" disabled>발행 — PNG 생성</button>
+      <select id="pubScale" title="PNG 렌더 크기 — 절반 크기도 축소가 아니라 HTML에서 직접 렌더">
+        <option value="2" selected>원본 크기 (2160px)</option>
+        <option value="1">1/2 크기 (1080px)</option>
+      </select>
       <span class="pubNote">대시보드는 PNG 렌더까지 — 발송은 스티비 화면에서 PNG 직접 업로드 (자동 발송 금지)</span>
     </div>
   </section>
@@ -355,6 +359,7 @@
     $('btnCancel').disabled = !(ST.state === 'phase1_running' || ST.state === 'phase2_running');
     $('btnReset').disabled = busy || !ST.state || ST.state === 'idle';
     $('btnPublish').disabled = !(ST.state === 'waiting_final_review' || ST.state === 'done');
+    $('pubScale').disabled = $('btnPublish').disabled;
 
     $('selectionPanel').classList.toggle('hidden', ST.state !== 'waiting_selection');
     const showCards = ['waiting_final_review','rendering','done'].includes(ST.state);
@@ -641,8 +646,11 @@
     }
   };
   $('btnPublish').onclick = async () => {
-    if (!confirm('모든 카드를 PNG 로 렌더합니다 (발행). 진행할까요?\n※ 발송은 하지 않습니다 — PNG 는 스티비 화면에서 직접 업로드.')) return;
-    const r = await fetch('/publish', {method:'POST'});
+    const scale = Number($('pubScale').value);
+    const sizeLabel = scale === 2 ? '원본 크기 (2160px)' : '1/2 크기 (1080px)';
+    if (!confirm('모든 카드를 PNG 로 렌더합니다 (발행) — ' + sizeLabel + '.\n진행할까요?\n※ 발송은 하지 않습니다 — PNG 는 스티비 화면에서 직접 업로드.')) return;
+    const r = await fetch('/publish', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({scale})});
     if (!r.ok) alertResp(r);
   };
 

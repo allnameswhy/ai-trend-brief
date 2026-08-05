@@ -452,6 +452,12 @@
   **발행 산출물은 `publish/` 하위 폴더에 모은다(2026-08-05)**: 헤더·표지·카드의 HTML/PNG 전부를 렌더 시
   `--out publish` 로 run 루트가 아닌 `run/publish/` 에 생성 — JSON 등 중간 산출물과 분리해 스티비 업로드용
   파일만 한곳에 둔다. `png_status` 와 대시보드 카드 목록(has_png)도 publish/ 기준(구 run 은 루트 fallback).
+- **렌더 크기 선택(2026-08-05 추가)**: 대시보드 [발행] 버튼 옆에서 원본 크기(2160px)/절반 크기(1080px)를
+  고른다 — `POST /publish` 본문 `{"scale": 2|1}` → `render_cards(..., scale)` → `build_cardnews.py --scale`
+  (Edge `--force-device-scale-factor`). **절반 크기도 2160px PNG 를 축소하는 게 아니라 HTML 에서 직접
+  렌더한다**(글자 선명도 우수 — 사용자 결정). 어느 크기든 산출물은 같은 `publish/` 폴더·같은 파일명이라
+  마지막 렌더가 남는다(두 크기를 동시에 보관하지 않음 — 필요하면 다시 렌더). 본문 없이 호출하면 원본 크기.
+  터미널 CLI(`run_pipeline`)는 종전대로 원본 크기 고정.
 
 ### 2.9 최종 산출물 및 배포 (Publishing & Distribution)
 - **최종 산출물 형태(2026-07-13 구체화)**: **카드뉴스** — 기사별 2종 세트.

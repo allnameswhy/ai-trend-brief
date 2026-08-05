@@ -327,7 +327,8 @@ def run_check(card_path: Path) -> int:
     return 0
 
 
-def export_png(html_path: Path, png_path: Path, size: tuple[int, int] = (1080, 1240)) -> bool:
+def export_png(html_path: Path, png_path: Path, size: tuple[int, int] = (1080, 1240),
+               scale: int = 2) -> bool:
     edge = find_edge()
     if not edge:
         print("  ! Edge를 찾지 못해 PNG는 건너뜀. HTML만 생성됨.", file=sys.stderr)
@@ -338,7 +339,9 @@ def export_png(html_path: Path, png_path: Path, size: tuple[int, int] = (1080, 1
             "--headless=new",
             "--disable-gpu",
             "--hide-scrollbars",
-            "--force-device-scale-factor=2",   # 2배 해상도 (카드·표지 2160×2480, 헤더 2160×760)
+            # 렌더 배율 — 2: 원본(카드·표지 2160×2480, 헤더 2160×760), 1: 절반(1080×1240, 1080×380).
+            # 절반 크기도 PNG 축소가 아니라 HTML에서 직접 렌더한다 (글자 선명도 우수)
+            f"--force-device-scale-factor={scale}",
             f"--window-size={size[0]},{size[1]}",
             "--default-background-color=00000000",
             "--virtual-time-budget=3000",       # 웹폰트 로드 대기
@@ -356,7 +359,7 @@ def export_png(html_path: Path, png_path: Path, size: tuple[int, int] = (1080, 1
     return png_path.exists()
 
 
-def build_one(card_path: Path, out_dir: Path, make_png: bool) -> None:
+def build_one(card_path: Path, out_dir: Path, make_png: bool, scale: int = 2) -> None:
     card = json.loads(card_path.read_text(encoding="utf-8"))
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = card_path.stem
@@ -367,14 +370,14 @@ def build_one(card_path: Path, out_dir: Path, make_png: bool) -> None:
 
     if make_png:
         png_out = out_dir / f"{stem}.png"
-        if export_png(html_out, png_out):
+        if export_png(html_out, png_out, scale=scale):
             size = png_out.stat().st_size
             print(f"  PNG  : {png_out}  ({size:,} bytes)")
         else:
             print("  PNG  : 실패")
 
 
-def build_header(week_label: str, out_dir: Path, make_png: bool) -> None:
+def build_header(week_label: str, out_dir: Path, make_png: bool, scale: int = 2) -> None:
     """발간 헤더를 out_dir 에 header.html(+header.png)로 렌더한다 — build_one과 대칭."""
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -384,14 +387,14 @@ def build_header(week_label: str, out_dir: Path, make_png: bool) -> None:
 
     if make_png:
         png_out = out_dir / "header.png"
-        if export_png(html_out, png_out, size=(1080, 380)):
+        if export_png(html_out, png_out, size=(1080, 380), scale=scale):
             size = png_out.stat().st_size
             print(f"  PNG  : {png_out}  ({size:,} bytes)")
         else:
             print("  PNG  : 실패")
 
 
-def build_cover(week_label: str, cards_dir: Path, out_dir: Path, make_png: bool) -> None:
+def build_cover(week_label: str, cards_dir: Path, out_dir: Path, make_png: bool, scale: int = 2) -> None:
     """표지를 out_dir 에 cover.html(+cover.png)로 렌더한다 — build_one과 대칭.
     목차는 cards_dir 의 card_NN.json 에서 채우므로, 카드가 모두 완성된 뒤 호출해야 한다."""
     toc = collect_toc(cards_dir)
@@ -405,7 +408,7 @@ def build_cover(week_label: str, cards_dir: Path, out_dir: Path, make_png: bool)
 
     if make_png:
         png_out = out_dir / "cover.png"
-        if export_png(html_out, png_out):
+        if export_png(html_out, png_out, scale=scale):
             size = png_out.stat().st_size
             print(f"  PNG  : {png_out}  ({size:,} bytes)")
         else:
@@ -423,6 +426,9 @@ def main() -> None:
                          "(목차는 현재 폴더의 card_NN.json 제목으로 채움)")
     ap.add_argument("--out", default=None, help="출력 폴더 (기본: 콘텐츠 JSON과 같은 폴더, 헤더는 현재 폴더)")
     ap.add_argument("--no-png", action="store_true", help="HTML만 생성(PNG 건너뜀)")
+    ap.add_argument("--scale", type=int, choices=(1, 2), default=2,
+                    help="렌더 배율 — 2: 원본 크기(카드 2160px, 기본), 1: 절반 크기(1080px). "
+                         "절반도 PNG 축소가 아니라 HTML에서 직접 렌더")
     ap.add_argument("--check", action="store_true", help="렌더 대신 기계 검사만 수행 (자수 규격 + 렌더 실측)")
     ap.add_argument("--test", action="store_true",
                     help="테스트 렌더 — 결과를 data/tests/<타임스탬프>/ 에 저장 (data/runs 와 같은 구조)")
@@ -457,10 +463,10 @@ def main() -> None:
         out_dir = out_dir or Path.cwd()
         if args.header:
             print(f"발간 헤더 빌드: {label}")
-            build_header(label, out_dir, make_png=not args.no_png)
+            build_header(label, out_dir, make_png=not args.no_png, scale=args.scale)
         else:
             print(f"표지 빌드: {label}")
-            build_cover(label, Path.cwd(), out_dir, make_png=not args.no_png)
+            build_cover(label, Path.cwd(), out_dir, make_png=not args.no_png, scale=args.scale)
         print(f"완료. → {out_dir}")
         return
 
@@ -474,7 +480,7 @@ def main() -> None:
 
     out_dir = out_dir or card_path.parent
     print(f"카드뉴스 빌드: {card_path.name}")
-    build_one(card_path, out_dir, make_png=not args.no_png)
+    build_one(card_path, out_dir, make_png=not args.no_png, scale=args.scale)
     print(f"완료. → {out_dir}")
 
 

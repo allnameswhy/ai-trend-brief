@@ -34,6 +34,10 @@
 - **발간 헤더 추가 (2026-07-30)**: 카드 묶음 맨 위 마스트헤드 `header.png`(1080×380, `tools/cardnews/header_template.html.j2`,
   사용자 확정 시안 재현). `render_cards`가 발행 시점 호수를 `month_week_label()`로 재계산해 **호수가 다른 카드 JSON 을
   갱신(호수 통일)**하고 헤더를 렌더(`build_cardnews.py --header "N월 N주"`). 세부는 PROJECT_NOTES 2.8.2·2.9
+- **발행 렌더 크기 선택 (2026-08-05)**: 대시보드 [발행] 버튼 옆에서 원본 크기(2160px)/절반 크기(1080px) 선택 —
+  `POST /publish` 본문 `{"scale": 2|1}` → `render_cards(scale)` → `build_cardnews.py --scale`. 절반 크기도
+  PNG 축소가 아니라 HTML 에서 직접 렌더(선명도). 두 크기 모두 같은 `publish/` 폴더·같은 파일명(마지막 렌더가 남음).
+  CLI(run_pipeline)는 원본 크기 고정. 세부는 PROJECT_NOTES 2.8.2
 - **발간 표지 추가 (2026-08-05)**: 표지 `cover.png`(1080×1240, `tools/cardnews/cover_template.html.j2`, 사용자 확정
   시안 재현) — 호수 + **목차**(카테고리별 카드 title, 카드가 모두 완성된 뒤 run 폴더의 card_NN.json 을 코드가 직접
   읽어 채움. 에이전트 호출 없음)를 담고 안내문 등 나머지 문구는 하드코딩. 발행(PNG 렌더) 시 `render_cards`가

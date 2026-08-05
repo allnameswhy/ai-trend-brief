@@ -199,8 +199,9 @@ async def _phase_task(phase: str, resume: bool) -> None:
         current["task"] = None
 
 
-async def _publish_task() -> None:
+async def _publish_task(scale: int = 2) -> None:
     """발행: 전 카드 PNG 렌더 → done — 대시보드 역할의 끝. (발송은 스티비 화면에서 사람이 직접)
+    scale — 렌더 배율(2=원본 2160px, 1=절반 1080px). 어느 쪽이든 HTML에서 직접 렌더한다.
     렌더는 동기 subprocess 라 to_thread 로 감싼다 — 렌더 중에도 SSE 가 멎지 않게."""
     rd = run_dir_path()
     logger = make_logger(rd, on_log)
@@ -208,8 +209,9 @@ async def _publish_task() -> None:
         set_state("rendering")
         n = current["cards"] or len(list_card_numbers(rd))
         current["cards"] = n
-        logger("orchestrator", f"발행 시작 — 카드 {n}건 PNG 렌더")
-        await asyncio.to_thread(render_cards, rd, n, logger)
+        size_note = "원본 크기(2160px)" if scale == 2 else "절반 크기(1080px)"
+        logger("orchestrator", f"발행 시작 — 카드 {n}건 PNG 렌더, {size_note}")
+        await asyncio.to_thread(render_cards, rd, n, logger, scale)
         made, missing = png_status(rd, n)
         if missing:
             logger("orchestrator",
@@ -417,14 +419,23 @@ async def reset_run():
 
 
 @app.post("/publish")
-async def publish():
-    """발행 — 전 카드 PNG 렌더까지 (대시보드의 마지막 단계. 발송은 스티비에서 수동 — 자동 발송 금지)."""
+async def publish(request: Request):
+    """발행 — 전 카드 PNG 렌더까지 (대시보드의 마지막 단계. 발송은 스티비에서 수동 — 자동 발송 금지).
+    본문(JSON)의 scale 로 렌더 크기를 고른다: 2=원본 2160px(기본), 1=절반 1080px."""
     if current["task"] is not None or current["state"] in RUNNING_STATES:
         return JSONResponse({"status": "busy", "error": "이미 실행 중입니다"}, status_code=409)
     if current["state"] not in ("waiting_final_review", "done"):
         return JSONResponse({"status": "invalid_state", "error": "발행은 카드 검토 대기(또는 완료) 상태에서만 가능합니다"},
                             status_code=409)
-    current["task"] = asyncio.create_task(_publish_task())
+    try:
+        payload = await request.json()
+    except Exception:          # 본문 없이 호출해도 기본(원본 크기)으로 동작
+        payload = {}
+    scale = payload.get("scale", 2)
+    if scale not in (1, 2):
+        return JSONResponse({"status": "invalid_scale", "error": "scale 은 2(원본 2160px) 또는 1(절반 1080px)만 가능합니다"},
+                            status_code=422)
+    current["task"] = asyncio.create_task(_publish_task(scale))
     return {"status": "started"}
 
 

@@ -422,8 +422,10 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
     return result
 
 
-def render_cards(run_dir: Path, count: int, on_log) -> None:
+def render_cards(run_dir: Path, count: int, on_log, scale: int = 2) -> None:
     """확정된 카드(card_01 ~ card_NN)와 발간 헤더·표지를 PNG로 렌더한다 — 오케스트레이터가 직접 실행.
+    scale — 렌더 배율(2=원본 2160px 기본, 1=절반 1080px). 절반도 PNG 축소가 아니라 HTML에서
+    직접 렌더한다 (2026-08-05 추가 — 대시보드 발행 버튼에서 크기 선택).
     렌더는 판단이 필요 없는 결정적 작업이라 에이전트를 쓰지 않는다 (2026-07-20 변경).
     호수는 발행(렌더) 시점에 다시 계산해 헤더·표지와 전 카드에 통일한다 (2026-07-30 변경 —
     집필과 발행이 주가 다르면 카드 알약·헤더/표지 표시가 어긋나므로, 발행일 기준으로 맞춘다).
@@ -460,7 +462,7 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
     #    표지 목차가 카드 title을 읽으므로 ① 호수 통일 뒤에 실행
     for flag, name in (("--header", "header(발간 헤더)"), ("--cover", "cover(표지)")):
         proc = subprocess.run(
-            [sys.executable, str(tool), flag, label, "--out", PUBLISH_SUBDIR],
+            [sys.executable, str(tool), flag, label, "--out", PUBLISH_SUBDIR, "--scale", str(scale)],
             cwd=str(run_dir), capture_output=True, text=True,
             encoding="utf-8", errors="replace",
         )
@@ -475,7 +477,7 @@ def render_cards(run_dir: Path, count: int, on_log) -> None:
     for idx in range(1, count + 1):
         card = f"card_{idx:02d}.json"
         proc = subprocess.run(
-            [sys.executable, str(tool), card, "--out", PUBLISH_SUBDIR],
+            [sys.executable, str(tool), card, "--out", PUBLISH_SUBDIR, "--scale", str(scale)],
             cwd=str(run_dir), capture_output=True, text=True,
             encoding="utf-8", errors="replace",
         )
