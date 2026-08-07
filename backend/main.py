@@ -31,6 +31,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -225,6 +226,39 @@ async def _publish_task(scale: int = 2) -> None:
         push_event("error", agent="orchestrator", message=f"발행 중 오류: {e}")
         set_state("error", error=str(e))
     finally:
+        current["task"] = None
+
+
+async def _publish_pdf_task() -> None:
+    """열람용 벡터 PDF 생성 — publish/ 의 HTML 을 Edge 인쇄로 병합 (tools/build_cardnews_pdf.py).
+    글자가 벡터로 들어가 텍스트 검색·복사가 된다. 보관·열람용 — 발송용 최종물은 여전히 PNG.
+    PNG 발행과 달리 파이프라인의 의미를 바꾸지 않으므로, 끝나면 이전 상태로 복귀한다."""
+    rd = run_dir_path()
+    logger = make_logger(rd, on_log)
+    prev = current["state"]
+    try:
+        set_state("rendering")
+        logger("orchestrator", "열람용 PDF 생성 시작 — publish/ 의 HTML 을 Edge 인쇄로 병합 (텍스트 검색·복사 가능)")
+        tool = PROJECT_ROOT / "tools" / "build_cardnews_pdf.py"
+        proc = await asyncio.to_thread(
+            subprocess.run,
+            [sys.executable, str(tool), str(rd)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
+        )
+        if proc.returncode == 0:
+            done_line = next((ln.strip() for ln in (proc.stdout or "").splitlines()
+                              if ln.strip().startswith("완성")), "완성")
+            logger("orchestrator", f"열람용 PDF {done_line}")
+        else:
+            lines = (proc.stderr or proc.stdout or "").strip().splitlines()
+            detail = lines[-1] if lines else "출력 없음"
+            logger("orchestrator", f"열람용 PDF 생성 실패 (exit={proc.returncode}) — {detail}")
+            push_event("error", agent="orchestrator", message=f"열람용 PDF 생성 실패 — {detail}")
+    except Exception as e:
+        logger("orchestrator", f"열람용 PDF 생성 중 오류: {e!r}")
+        push_event("error", agent="orchestrator", message=f"열람용 PDF 생성 중 오류: {e}")
+    finally:
+        set_state(prev)      # PDF 는 부가 산출물 — 파이프라인 상태를 되돌린다
         current["task"] = None
 
 
@@ -436,6 +470,25 @@ async def publish(request: Request):
         return JSONResponse({"status": "invalid_scale", "error": "scale 은 2(원본 2160px) 또는 1(절반 1080px)만 가능합니다"},
                             status_code=422)
     current["task"] = asyncio.create_task(_publish_task(scale))
+    return {"status": "started"}
+
+
+@app.post("/publish/pdf")
+async def publish_pdf():
+    """열람용 벡터 PDF 생성 — 발행 산출물(publish/의 HTML)을 한 권의 PDF 로 병합.
+    HTML 이 있어야 하므로 [발행 — PNG 생성] 을 먼저 한 번은 실행해야 한다."""
+    if current["task"] is not None or current["state"] in RUNNING_STATES:
+        return JSONResponse({"status": "busy", "error": "이미 실행 중입니다"}, status_code=409)
+    if current["state"] not in ("waiting_final_review", "done"):
+        return JSONResponse({"status": "invalid_state", "error": "PDF 생성은 카드 검토 대기(또는 완료) 상태에서만 가능합니다"},
+                            status_code=409)
+    rd = run_dir_path()
+    pub = rd / PUBLISH_SUBDIR
+    if not (pub / "cover.html").exists() and not list(pub.glob("card_*.html")):
+        return JSONResponse({"status": "no_html",
+                             "error": "발행 산출물(HTML)이 없습니다 — [발행 — PNG 생성]을 먼저 실행하세요"},
+                            status_code=409)
+    current["task"] = asyncio.create_task(_publish_pdf_task())
     return {"status": "started"}
 
 

@@ -251,6 +251,7 @@
         <option value="2" selected>원본 크기 (2160px)</option>
         <option value="1">1/2 크기 (1080px)</option>
       </select>
+      <button id="btnPdf" class="btn" disabled title="발행 산출물(HTML)을 한 권의 PDF로 병합 — 텍스트 검색·복사 가능. 보관·열람용">열람용 PDF 생성</button>
       <span class="pubNote">대시보드는 PNG 렌더까지 — 발송은 스티비 화면에서 PNG 직접 업로드 (자동 발송 금지)</span>
     </div>
   </section>
@@ -360,6 +361,7 @@
     $('btnReset').disabled = busy || !ST.state || ST.state === 'idle';
     $('btnPublish').disabled = !(ST.state === 'waiting_final_review' || ST.state === 'done');
     $('pubScale').disabled = $('btnPublish').disabled;
+    $('btnPdf').disabled = $('btnPublish').disabled;
 
     $('selectionPanel').classList.toggle('hidden', ST.state !== 'waiting_selection');
     const showCards = ['waiting_final_review','rendering','done'].includes(ST.state);
@@ -651,6 +653,11 @@
     if (!confirm('모든 카드를 PNG 로 렌더합니다 (발행) — ' + sizeLabel + '.\n진행할까요?\n※ 발송은 하지 않습니다 — PNG 는 스티비 화면에서 직접 업로드.')) return;
     const r = await fetch('/publish', {method:'POST',
       headers:{'Content-Type':'application/json'}, body:JSON.stringify({scale})});
+    if (!r.ok) alertResp(r);
+  };
+  $('btnPdf').onclick = async () => {
+    if (!confirm('발행 산출물(HTML)로 열람용 PDF 를 만듭니다 — 텍스트 검색·복사 가능.\n※ 마지막 [발행] 때의 카드 내용 기준입니다. 진행할까요?')) return;
+    const r = await fetch('/publish/pdf', {method:'POST'});
     if (!r.ok) alertResp(r);
   };
 

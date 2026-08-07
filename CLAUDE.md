@@ -38,6 +38,9 @@
   `POST /publish` 본문 `{"scale": 2|1}` → `render_cards(scale)` → `build_cardnews.py --scale`. 절반 크기도
   PNG 축소가 아니라 HTML 에서 직접 렌더(선명도). 두 크기 모두 같은 `publish/` 폴더·같은 파일명(마지막 렌더가 남음).
   CLI(run_pipeline)는 원본 크기 고정. 세부는 PROJECT_NOTES 2.8.2
+- **열람용 PDF 버튼 (2026-08-05)**: 대시보드 [열람용 PDF 생성] → `POST /publish/pdf` → `tools/build_cardnews_pdf.py`
+  (publish/ HTML 을 Edge 인쇄로 병합, 텍스트 검색·복사 가능). PNG 발행 후에만 가능, 파이프라인 상태는 바꾸지 않음
+  (끝나면 이전 상태 복귀). 세부는 PROJECT_NOTES 2.8.2
 - **발간 표지 추가 (2026-08-05)**: 표지 `cover.png`(1080×1240, `tools/cardnews/cover_template.html.j2`, 사용자 확정
   시안 재현) — 호수 + **목차**(카테고리별 카드 title, 카드가 모두 완성된 뒤 run 폴더의 card_NN.json 을 코드가 직접
   읽어 채움. 에이전트 호출 없음)를 담고 안내문 등 나머지 문구는 하드코딩. 발행(PNG 렌더) 시 `render_cards`가
