@@ -89,8 +89,8 @@ def render_html(card: dict) -> str:
 def collect_toc(cards_dir: Path) -> list:
     """표지 목차 데이터 — cards_dir의 card_NN.json(백업 card_NN_orig.json 제외)을 번호순으로 읽어
     카테고리로 묶는다. 항목 제목은 완성된 카드의 title 그대로, 번호는 카테고리 안 1부터.
-    그룹 배치는 확정 시안과 같은 규칙 — 항목이 가장 많은 그룹을 안내문 옆 첫 칸에 둬
-    2열 격자의 높이 균형을 맞춘다(동수면 정책→기술→윤리 순). 깨진 JSON은 건너뛴다(카드 렌더가 알림)."""
+    그룹 순서는 카테고리 고정 순서(정책→기술→윤리 — 로마 숫자 I·II·III과 일치. 확정 시안이
+    그룹 전부를 오른쪽 열에 이 순서로 쌓음). 깨진 JSON은 건너뛴다(카드 렌더가 알림)."""
     files = sorted(p for p in cards_dir.glob("card_*.json")
                    if re.fullmatch(r"card_\d{2}\.json", p.name))
     groups = {cat: [] for cat in TOC_LABEL}          # 삽입 순서 = 카테고리 고정 순서
@@ -111,7 +111,6 @@ def collect_toc(cards_dir: Path) -> list:
         }
         for cat, titles in groups.items() if titles
     ]
-    toc.sort(key=lambda g: -len(g["articles"]))      # 안정 정렬 — 동수면 카테고리 순서 유지
     return toc
 
 
@@ -130,11 +129,13 @@ def render_header_html(week_label: str) -> str:
 
 def render_cover_html(week_label: str, toc: list) -> str:
     """표지(1080×1240, 호수+목차) HTML을 렌더한다. 안내문 등 나머지 문구는 템플릿에 고정.
+    호수는 연도까지 표시("2026년 8월 1주") — 연도는 호수(month_week_label)와 같은 논리로 렌더 시점 기준.
     NRF 심벌은 base64 data URI로 인라인 — HTML이 run 폴더에 생성돼도 이미지가 깨지지 않는다."""
     if not NRF_SYMBOL_PATH.exists():
         sys.exit(f"NRF 심벌 이미지를 찾을 수 없습니다: {NRF_SYMBOL_PATH}")
     b64 = base64.b64encode(NRF_SYMBOL_PATH.read_bytes()).decode("ascii")
     context = {
+        "year": datetime.now().year,
         "week_label": week_label,
         "toc": toc,
         "nrf_symbol": f"data:image/png;base64,{b64}",

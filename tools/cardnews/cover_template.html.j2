@@ -38,7 +38,7 @@
 
   /* 기관 lockup — 왼쪽 NRF 심벌 + 구분선 + 기관명, 오른쪽 발행 부서 */
   .lockup { position: relative; display: flex; align-items: center; justify-content: space-between;
-    padding: 44px 64px 0 64px; }
+    padding: 76px 64px 0 64px; }
   .lockup .org-group { display: flex; align-items: center; gap: 16px; }
   .lockup img { height: 46px; display: block; }
   .lockup .divider { width: 1px; height: 30px; background: rgba(43,68,128,0.22); }
@@ -46,8 +46,8 @@
   .lockup .team { text-align: right; font-size: 24px; font-weight: 750; letter-spacing: 0.02em;
     color: #33415E; }
 
-  /* 표지 타이틀 — 브리프명 + 호수(week_label) */
-  .title-block { position: relative; padding: 36px 64px 0 64px; }
+  /* 표지 타이틀 — 브리프명 + 호수(연도 + week_label) */
+  .title-block { position: relative; padding: 48px 64px 0 64px; }
   .title-row { display: flex; align-items: baseline; gap: 26px; }
   .title-row .brief { font-size: 106px; font-weight: 800; line-height: 1.0;
     letter-spacing: -0.03em; color: #131C33; white-space: nowrap; }
@@ -56,7 +56,7 @@
 
   /* ── 목차 영역 — 남는 높이에 세로 중앙 정렬 ── */
   .contents { position: relative; flex: 1; display: flex; flex-direction: column;
-    justify-content: center; gap: 44px; padding: 24px 64px 34px 64px; }
+    justify-content: center; gap: 44px; padding: 24px 64px 36px 64px; }
   .contents-label { display: flex; align-items: center; gap: 16px; }
   .contents-label .chips { display: flex; gap: 4px; }
   .contents-label .chips div { width: 18px; height: 5px; }
@@ -65,26 +65,27 @@
   .contents-label .chips .ethics { background: #7C64EE; }
   .contents-label .word { font-size: 16px; font-weight: 800; letter-spacing: 0.22em; color: #33415E; }
 
-  /* 2열 격자 — 첫 칸은 안내문(고정 문구), 나머지 칸에 카테고리 그룹(순서는 collect_toc가 결정) */
-  .toc-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 56px; row-gap: 80px; }
+  /* 2열 — 왼쪽 열은 안내문(고정 문구), 오른쪽 열에 카테고리 그룹을 세로로 쌓음(정책→기술→윤리 고정 순서) */
+  .toc-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 56px; }
+  .toc-col { display: flex; flex-direction: column; gap: 70px; }
 
-  .notice { display: flex; flex-direction: column; gap: 20px; }
-  .notice .ai { background: #1B2440; padding: 16px 18px; font-size: 23px; font-weight: 450;
+  .notice { display: flex; flex-direction: column; gap: 24px; }
+  .notice .ai { background: #1B2440; padding: 18px 20px; font-size: 24px; font-weight: 450;
     line-height: 1.55; color: #EAF0FC; letter-spacing: -0.02em; word-break: keep-all;
     text-align: justify; text-justify: inter-character; }
-  .notice .intro { font-size: 23px; font-weight: 450; line-height: 1.62; color: #2E3B58;
+  .notice .intro { font-size: 24px; font-weight: 450; line-height: 1.62; color: #2E3B58;
     word-break: keep-all; text-align: justify; text-justify: inter-character; }
   .notice .intro strong { font-weight: 750; color: #131C33; }
 
-  .toc-group { display: flex; flex-direction: column; gap: 18px; }
+  .toc-group { display: flex; flex-direction: column; gap: 12px; }
   .toc-head { display: flex; align-items: center; gap: 14px; }
   .toc-head .dot { width: 13px; height: 13px; }   /* 색·글로우는 그룹별 인라인(accent) */
   .toc-head .label { font-size: 23px; font-weight: 800; letter-spacing: 0.16em; color: #33415E; }
-  .toc-items { display: flex; flex-direction: column; gap: 14px; padding-left: 27px; }
-  .toc-item { display: flex; align-items: baseline; gap: 16px; }
-  .toc-item .no { flex: none; width: 26px; font-size: 22px; font-weight: 600; color: #8D99B3;
+  .toc-items { display: flex; flex-direction: column; gap: 14px; padding-left: 28px; }
+  .toc-item { display: flex; align-items: baseline; gap: 14px; }
+  .toc-item .no { flex: none; width: 26px; font-size: 21px; font-weight: 600; color: #8D99B3;
     font-variant-numeric: tabular-nums; }
-  .toc-item .t { font-size: 28px; font-weight: 600; line-height: 1.35; color: #1F2B47;
+  .toc-item .t { font-size: 27px; font-weight: 600; line-height: 1.38; color: #1F2B47;
     word-break: keep-all; }
 </style>
 </head>
@@ -107,7 +108,7 @@
   <div class="title-block">
     <div class="title-row">
       <div class="brief">AI Trend Brief</div>
-      <div class="week">{{ week_label }}</div>
+      <div class="week">{{ year }}년 {{ week_label }}</div>
     </div>
   </div>
 
@@ -118,25 +119,27 @@
     </div>
     <div class="toc-grid">
       <div class="notice">
-        <div class="ai">본 발간물은 생성형 AI로 초안을 작성한 뒤 담당자의 검수를 거쳐 발간되었습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 인용을 위해서는 원문을 확인해 주시기 바랍니다.</div>
-        <div class="intro">AI·정책기획팀에서는 재단의 학술 연구 지원 혁신을 위한 아젠다 발굴 및 대안 모색을 위한 기초자료 중 하나로, 국외 AI 정책·기술 동향 등을 조사하여 <strong>AI Trend Brief</strong>를 제공합니다.</div>
+        <div class="ai">본 발간물은 생성형 AI를 활용하여 초안을 작성한 뒤, 담당자의 검수를 거쳐 발간했습니다. 수록 내용은 발간 시점의 원문에 근거하며, 정확한 내용은 하단에 기재된 원문을 확인해 주시기 바랍니다.</div>
+        <div class="intro">AI·정책기획팀에서는 재단의 학술·연구 지원 혁신 아젠다 발굴 및 대안 모색을 위한 기초자료로 활용할 수 있도록, 국외 AI 정책·기술 동향 등을 조사하여 <strong>AI Trend Brief</strong>를 제공합니다. 지난 2주 동안 과학기술·연구개발 AI 분야의 주요 기사를 선정하여 보내드립니다.</div>
       </div>
-      {% for grp in toc %}
-      <div class="toc-group">
-        <div class="toc-head">
-          <div class="dot" style="background: {{ grp.accent }}; box-shadow: 0 0 14px {{ grp.glow }};"></div>
-          <div class="label">{{ grp.label }}</div>
-        </div>
-        <div class="toc-items">
-          {% for it in grp.articles %}
-          <div class="toc-item">
-            <div class="no">{{ it.no }}</div>
-            <div class="t">{{ it.title }}</div>
+      <div class="toc-col">
+        {% for grp in toc %}
+        <div class="toc-group">
+          <div class="toc-head">
+            <div class="dot" style="background: {{ grp.accent }}; box-shadow: 0 0 14px {{ grp.glow }};"></div>
+            <div class="label">{{ grp.label }}</div>
           </div>
-          {% endfor %}
+          <div class="toc-items">
+            {% for it in grp.articles %}
+            <div class="toc-item">
+              <div class="no">{{ it.no }}</div>
+              <div class="t">{{ it.title }}</div>
+            </div>
+            {% endfor %}
+          </div>
         </div>
+        {% endfor %}
       </div>
-      {% endfor %}
     </div>
   </div>
 </div>
