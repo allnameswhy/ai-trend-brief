@@ -110,6 +110,21 @@ def render_backdrop(edge: str, udd: str) -> str | None:
         return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
 
 
+# ── 형광펜 강조 인쇄 호환 (2026-08-25) ──────────────────────────────────
+# 본문 강조 구절(.pt-main .text strong)의 linear-gradient(transparent 68%, rgba 68%) 배경을
+# Edge 인쇄가 '타일링 패턴 + 투명 마스크(SMask Luminosity)'로 내보내는데, Adobe 계열 뷰어
+# (Acrobat·Edge 내장)가 이를 그리지 못해 형광펜이 사라진다 (pdfium 계열 뷰어에서만 보임 —
+# 가변 폰트 백지와 같은 유형, 2026-08-25 실측). 인쇄 복사본에서만 같은 모양의 단순 채우기
+# (box-shadow, 높이 0.4em = 실측 9.5px)로 바꾼다 — 상수 알파 사각형이라 모든 뷰어가 그린다.
+# PNG 렌더(원본 HTML)는 그라데이션을 그대로 쓴다.
+HL_GRADIENT_RE = re.compile(r"linear-gradient\(transparent 68%,\s*(rgba\([^()]+\))\s+68%\)")
+HL_PRINT_CSS = """
+<style id="pdf-highlight-fix">
+  .pt-main .text strong {{ background: none !important;
+    box-shadow: inset 0 -0.4em 0 0 {color} !important; }}
+</style>
+"""
+
 # 원본 HTML 은 건드리지 않고, 임시 복사본에만 끼워 넣는 인쇄용 CSS.
 #   @page       — 페이지를 카드 크기에 정확히 맞추고 여백을 없앤다
 #   color-adjust— 배경 그라데이션이 인쇄에서 빠지지 않게 강제한다
@@ -152,6 +167,9 @@ def html_to_pdf(edge: str, html: Path, pdf_out: Path, page_in: tuple[float, floa
     css = PRINT_CSS.format(w=round(page_in[0], 4), h=round(page_in[1], 4))
     if backdrop:
         css += BACKDROP_CSS.format(uri=backdrop)
+    hl = HL_GRADIENT_RE.search(src)         # 카드 본문의 형광펜 그라데이션 → 인쇄 호환 채우기
+    if hl:
+        css += HL_PRINT_CSS.format(color=hl.group(1))
     # </head> 앞에 넣어야 문서 자체 스타일보다 뒤에 와서 확실히 적용된다.
     if "</head>" in src:
         src = src.replace("</head>", css + "</head>", 1)
