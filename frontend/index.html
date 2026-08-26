@@ -563,7 +563,7 @@
     fs.appendChild(labeled('강조 구절 (key, 환산 25자 이하 · 없으면 비움)', el('input', 'p-key', pt.key)));
     fs.appendChild(labeled('문장 뒷부분 (post, key 있을 때만)', el('input', 'p-post', pt.post)));
     const subs = Array.isArray(pt.sub) ? pt.sub.join('\n') : (pt.sub || '');
-    fs.appendChild(labeled('보조 설명 (한 줄 = 1개, 각 환산 46자)', el('textarea', 'p-sub', subs)));
+    fs.appendChild(labeled('보조 설명 (한 줄 = 1개 · 길면 카드에서 자동 줄바꿈)', el('textarea', 'p-sub', subs)));
     return fs;
   }
   function renumberPoints(){

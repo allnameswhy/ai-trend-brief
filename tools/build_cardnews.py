@@ -230,6 +230,12 @@ def est_lines(weighted: float) -> int:
     return max(1, math.ceil(weighted / 42))
 
 
+def est_sub_lines(weighted: float) -> int:
+    """보조 설명 환산 자수 → 예상 줄수. 글자(22px)가 본문(24px)보다 작아
+    한 줄 용량 ≈ 46자(폭 894px ÷ 19.0px), 단어 단위 줄바꿈 여유를 둬 44자로 나눈다."""
+    return max(1, math.ceil(weighted / 44))
+
+
 def validate_card(card: dict) -> list[str]:
     """card_schema.md(v2) 규격 위반 목록을 돌려준다. 빈 목록이면 합격.
     자수·개수만 검사한다 — 실제 넘침은 check_layout(렌더 실측)이 판정."""
@@ -267,15 +273,14 @@ def validate_card(card: dict) -> list[str]:
             need(kw <= 25, f"point {i} key는 환산 25자 이하(현재 {kw:.1f}자)")
         else:
             need(not post, f"point {i}: key가 없으면 post도 쓰지 않는다(문장 전체를 pre에)")
-        # sub는 문자열 하나 또는 배열 — 보조가 늘면 그만큼 포인트(문장 줄수)를 줄이면 된다
+        # sub는 문자열 하나 또는 배열 — 보조가 늘면 그만큼 포인트(문장 줄수)를 줄이면 된다.
+        # 개별 자수 제한은 없고, 길면 자동 줄바꿈되어 줄수만큼 아래 줄수 한도를 차지한다
         subs = pt.get("sub", "") or []
         if isinstance(subs, str):
             subs = [subs]
-        for j, sub in enumerate(subs, 1):
+        for sub in subs:
             sub_count += 1
-            total_lines += 1
-            need(weighted_len(sub) <= 46,
-                 f"point {i} sub {j}는 환산 46자(한 줄) 이하(현재 {weighted_len(sub):.1f}자)")
+            total_lines += est_sub_lines(weighted_len(sub))
     # 보조 한 줄(44px)은 문장 한 줄(36px)보다 약간 비싸서, 보조가 많으면 한도를 한 줄 줄인다.
     # 16줄은 푸터가 최소일 때의 물리 한계 — 푸터가 두꺼우면(출처 줄바꿈) 실측 검사가 넘침을 반려한다
     line_budget = 15 if sub_count >= 4 else 16
