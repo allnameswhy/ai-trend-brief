@@ -308,10 +308,13 @@ def selection_pool(rd: Path):
 
 
 def auth_status() -> dict:
-    """Claude 인증의 가벼운 추정 체크 — API 키 환경변수 또는 Claude Code 로그인 자격증명 파일.
+    """Claude 인증의 가벼운 추정 체크 — API 키·로그인 토큰 환경변수 또는 Claude Code 로그인 자격증명 파일.
     (진짜 검증은 파이프라인 실행 시 SDK 가 한다 — 실패하면 로그에 오류로 나타난다)"""
     if os.environ.get("ANTHROPIC_API_KEY"):
         return {"logged_in": True, "method": "api_key"}
+    # `claude setup-token` 으로 받은 구독 로그인 토큰(sk-ant-oat…) — API 키 자리에 넣으면 401 이 난다
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        return {"logged_in": True, "method": "oauth_token"}
     if (Path.home() / ".claude" / ".credentials.json").exists():
         return {"logged_in": True, "method": "credentials"}
     return {"logged_in": False, "method": None}

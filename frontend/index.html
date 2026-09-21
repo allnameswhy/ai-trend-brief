@@ -666,7 +666,8 @@
     if (!a) return;
     const b = $('authBadge');
     if (a.logged_in){
-      b.textContent = a.method === 'api_key' ? '인증: API 키(.env)' : '인증: Claude 로그인';
+      b.textContent = a.method === 'api_key' ? '인증: API 키(.env)'
+        : a.method === 'oauth_token' ? '인증: 로그인 토큰(.env)' : '인증: Claude 로그인';
       b.className = 'pill authok';
       $('btnLogin').classList.add('hidden');
     } else {
