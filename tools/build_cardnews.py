@@ -52,6 +52,11 @@ ACCENT_MAP = {"정책": "#3E6DE8", "기술": "#0EA79E", "윤리": "#7C64EE"}
 # 표지 목차의 카테고리 표기 — 로마 숫자는 카테고리에 고정(표지 안 배치 순서와 무관)
 TOC_LABEL = {"정책": "I. 정책", "기술": "II. 기술", "윤리": "III. 윤리"}
 
+# 호수 표기 형식 'M월 N주' — 월 1~12, 주 1~6 (일요일 시작 달력에서 한 달은 최대 6주).
+# backend/orchestrator.py 의 WEEK_LABEL_RE 와 같은 식 — 바꿀 땐 두 곳 함께. (이 파일은 검토자 에이전트·터미널이
+# 단독 실행하는 도구라 import 하지 않고 따로 둔다.) 2026-09-22: --check 와 --header/--cover 의 검사를 이 상수로 통합.
+WEEK_LABEL_RE = re.compile(r"(1[0-2]|[1-9])월 [1-6]주")
+
 
 def hex_to_rgba(hex_color: str, alpha: float) -> str:
     h = hex_color.lstrip("#")
@@ -129,7 +134,8 @@ def render_header_html(week_label: str) -> str:
 
 def render_cover_html(week_label: str, toc: list) -> str:
     """표지(1080×1240, 호수+목차) HTML을 렌더한다. 안내문 등 나머지 문구는 템플릿에 고정.
-    호수는 연도까지 표시("2026년 8월 1주") — 연도는 호수(month_week_label)와 같은 논리로 렌더 시점 기준.
+    호수는 연도까지 표시("2026년 8월 1주") — 연도는 렌더 시점(오늘) 기준. 사람이 호수를 다른 달로 직접 고쳐
+    발행하면(연말연시) 연도가 어긋날 수 있다 — 대시보드 발행 확인창이 경고한다 (TODO: 연도 직접 지정).
     NRF 심벌은 base64 data URI로 인라인 — HTML이 run 폴더에 생성돼도 이미지가 깨지지 않는다."""
     if not NRF_SYMBOL_PATH.exists():
         sys.exit(f"NRF 심벌 이미지를 찾을 수 없습니다: {NRF_SYMBOL_PATH}")
@@ -247,7 +253,7 @@ def validate_card(card: dict) -> list[str]:
 
     need(card.get("category") in ("정책", "기술", "윤리"), "category는 정책/기술/윤리 중 하나")
     need(bool(re.fullmatch(r"\d{2}", str(card.get("article_no", "")))), "article_no는 두 자리 숫자")
-    need(bool(re.fullmatch(r"\d{1,2}월 \d주", card.get("week_label", ""))), "week_label은 'M월 N주' 형식")
+    need(bool(WEEK_LABEL_RE.fullmatch(str(card.get("week_label", "")))), "week_label은 'M월 N주' 형식(월 1~12, 주 1~6)")
 
     title = card.get("title", "")
     need(bool(title) and weighted_len(title) <= 17,
@@ -464,8 +470,8 @@ def main() -> None:
 
     if args.header or args.cover:
         label = args.header or args.cover
-        if not re.fullmatch(r"\d{1,2}월 \d주", label):
-            sys.exit(f'호수 형식이 아닙니다: "{label}" — "N월 N주" 형태로 지정하세요')
+        if not WEEK_LABEL_RE.fullmatch(label):
+            sys.exit(f'호수 형식이 아닙니다: "{label}" — "N월 N주"(월 1~12, 주 1~6) 형태로 지정하세요')
         out_dir = out_dir or Path.cwd()
         if args.header:
             print(f"발간 헤더 빌드: {label}")

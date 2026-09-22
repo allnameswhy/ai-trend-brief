@@ -44,7 +44,9 @@ from backend.orchestrator import (
     PROJECT_ROOT,
     PUBLISH_SUBDIR,
     PipelineError,
+    WEEK_LABEL_RE,
     make_logger,
+    month_week_label,
     new_run_dir,
     png_status,
     render_cards,
@@ -59,7 +61,8 @@ RUNS_DIR = PROJECT_ROOT / "data" / "runs"
 RUNNING_STATES = ("phase1_running", "phase2_running", "rendering")
 
 # ── 전역 상태 (데모용: 한 번에 하나의 run 만) ─────────────────────────────
-current = {"run_dir": None, "state": "idle", "error": None, "cards": 0, "task": None}
+current = {"run_dir": None, "state": "idle", "error": None, "cards": 0, "task": None,
+           "week_label_manual": False}   # 사람이 카드 편집 화면에서 호수를 고쳐 저장했는지 (2026-09-22)
 
 # SSE: 접속별 큐 팬아웃 + 최근 이벤트 링버퍼(새로고침·재접속 시 재전송)
 history: deque = deque(maxlen=500)
@@ -151,6 +154,7 @@ def write_state_file() -> None:
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "error": current["error"],
         "cards": current["cards"],
+        "week_label_manual": bool(current.get("week_label_manual")),   # 발행 호수 결정 근거 (publish_week_label)
     }
     (rd / "state.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -200,9 +204,10 @@ async def _phase_task(phase: str, resume: bool) -> None:
         current["task"] = None
 
 
-async def _publish_task(scale: int = 2) -> None:
+async def _publish_task(scale: int = 2, week_label: str | None = None, reason: str = "auto") -> None:
     """발행: 전 카드 PNG 렌더 → done — 대시보드 역할의 끝. (발송은 스티비 화면에서 사람이 직접)
     scale — 렌더 배율(2=원본 2160px, 1=절반 1080px). 어느 쪽이든 HTML에서 직접 렌더한다.
+    week_label·reason — publish_week_label() 이 정한 호수와 근거. /publish 가 상태를 바꾸기 전에 정해서 넘긴다 (2026-09-22).
     렌더는 동기 subprocess 라 to_thread 로 감싼다 — 렌더 중에도 SSE 가 멎지 않게."""
     rd = run_dir_path()
     logger = make_logger(rd, on_log)
@@ -212,7 +217,11 @@ async def _publish_task(scale: int = 2) -> None:
         current["cards"] = n
         size_note = "원본 크기(2160px)" if scale == 2 else "절반 크기(1080px)"
         logger("orchestrator", f"발행 시작 — 카드 {n}건 PNG 렌더, {size_note}")
-        await asyncio.to_thread(render_cards, rd, n, logger, scale)
+        auto = month_week_label(datetime.now())
+        note = {"manual": f"사람이 정한 값 — 오늘 기준 자동 계산은 '{auto}'",
+                "saved": f"지난 발행 값 유지 — 오늘 기준 자동 계산은 '{auto}'"}.get(reason, "오늘 기준 자동 계산")
+        logger("orchestrator", f"발행 호수: '{week_label or auto}' ({note})")
+        await asyncio.to_thread(render_cards, rd, n, logger, scale, week_label)
         made, missing = png_status(rd, n)
         if missing:
             logger("orchestrator",
@@ -271,6 +280,35 @@ def list_card_numbers(rd: Path) -> list[str]:
         if nn.isdigit():
             nums.append(nn)
     return nums
+
+
+def saved_week_label() -> str | None:
+    """현재 run 의 card_NN.json 들에 저장된 호수 — 전 카드가 한 값으로 통일돼 있고 형식이 맞을 때만 그 값.
+    (제각각이거나 형식이 틀리면 None → 발행 때 자동 계산으로 통일된다)"""
+    rd = run_dir_path()
+    if not rd or not rd.exists():
+        return None
+    labels = {str((load_json(rd, f"card_{no}.json", None) or {}).get("week_label") or "")
+              for no in list_card_numbers(rd)}
+    if len(labels) == 1:
+        label = labels.pop()
+        if WEEK_LABEL_RE.fullmatch(label):
+            return label
+    return None
+
+
+def publish_week_label() -> tuple[str, str]:
+    """발행 때 헤더·표지·전 카드에 찍을 호수와 그 근거 — /state 의 화면 안내와 /publish 가 같은 함수를 쓴다 (2026-09-22).
+      · 사람이 카드 편집 화면에서 호수를 고쳐 저장했으면(week_label_manual) 그 값
+      · 이미 발행한 run(done)을 다시 발행하면 지난 발행 때 카드에 찍힌 값 유지
+      · 그 외(첫 발행·수정 없음)는 오늘 기준 자동 계산 — 집필 주와 발행 주가 달라도 발행일 기준으로 맞춘다
+    반환: (호수, 근거) — 근거는 "manual"(사람이 정함) / "saved"(지난 발행 값) / "auto"(오늘 자동 계산)"""
+    saved = saved_week_label()
+    if saved and current.get("week_label_manual"):
+        return saved, "manual"
+    if saved and current["state"] == "done":
+        return saved, "saved"
+    return month_week_label(datetime.now()), "auto"
 
 
 def selection_pool(rd: Path):
@@ -334,6 +372,7 @@ def restore_last_run() -> None:
             continue      # [초기화]로 버린 run — 없는 셈 치고 그 이전 run 을 계속 탐색
         current["run_dir"] = str(d)
         current["cards"] = st.get("cards") or 0
+        current["week_label_manual"] = bool(st.get("week_label_manual", False))
         state = st.get("state", "idle")
         if state in RUNNING_STATES:
             current["state"] = "error"
@@ -366,13 +405,19 @@ def index():
 
 @app.get("/state")
 async def get_state():
-    """페이지 로드·재접속 시 화면 라우팅의 근거가 되는 현재 상태."""
+    """페이지 로드·재접속 시 화면 라우팅의 근거가 되는 현재 상태.
+    week_label_* — 카드 편집 폼의 호수 안내용: 오늘 자동 계산값 / 발행 때 실제로 쓸 값과 그 근거 (2026-09-22)"""
+    label, reason = publish_week_label()
     return {
         "state": current["state"],
         "run_dir": current["run_dir"],
         "cards": current["cards"],
         "error": current["error"],
         "resume": resume_available(),
+        "week_label_auto": month_week_label(datetime.now()),
+        "week_label_publish": label,
+        "week_label_reason": reason,
+        "week_label_manual": bool(current.get("week_label_manual")),
         "auth": auth_status(),
         "last_event_id": event_seq,
     }
@@ -391,6 +436,7 @@ async def start_phase1():
         current["run_dir"] = str(rd)
         current["cards"] = 0
         current["error"] = None
+        current["week_label_manual"] = False
     current["task"] = asyncio.create_task(_phase_task("phase1", resume))
     return {"status": "started", "run_dir": current["run_dir"], "resume": resume}
 
@@ -449,6 +495,7 @@ async def reset_run():
     current["state"] = "idle"
     current["error"] = None
     current["cards"] = 0
+    current["week_label_manual"] = False
     push_event("log", agent="orchestrator",
                message=f"run 초기화 — {name} 은 대시보드에서 제외됨 (폴더는 data/runs 에 그대로 남음)")
     push_event("state", state="idle", error=None, run_dir=None, cards=0, resume=None)
@@ -458,7 +505,8 @@ async def reset_run():
 @app.post("/publish")
 async def publish(request: Request):
     """발행 — 전 카드 PNG 렌더까지 (대시보드의 마지막 단계. 발송은 스티비에서 수동 — 자동 발송 금지).
-    본문(JSON)의 scale 로 렌더 크기를 고른다: 2=원본 2160px(기본), 1=절반 1080px."""
+    본문(JSON)의 scale 로 렌더 크기를 고른다: 2=원본 2160px(기본), 1=절반 1080px.
+    호수는 본문으로 받지 않는다 — 카드 편집 화면에서 고친 값·재발행·자동 계산 중 publish_week_label() 이 정한다 (2026-09-22)."""
     if current["task"] is not None or current["state"] in RUNNING_STATES:
         return JSONResponse({"status": "busy", "error": "이미 실행 중입니다"}, status_code=409)
     if current["state"] not in ("waiting_final_review", "done"):
@@ -472,7 +520,8 @@ async def publish(request: Request):
     if scale not in (1, 2):
         return JSONResponse({"status": "invalid_scale", "error": "scale 은 2(원본 2160px) 또는 1(절반 1080px)만 가능합니다"},
                             status_code=422)
-    current["task"] = asyncio.create_task(_publish_task(scale))
+    label, reason = publish_week_label()   # 상태가 rendering 으로 바뀌기 전에 정한다 (done 여부가 판단 근거)
+    current["task"] = asyncio.create_task(_publish_task(scale, label, reason))
     return {"status": "started"}
 
 
@@ -606,7 +655,8 @@ async def preview_card(no: str):
 
 @app.put("/run/cards/{no}")
 async def put_card(no: str, request: Request):
-    """사람이 수정한 카드 저장 (+ 즉시 자수 검사). 작가 원본은 card_NN_orig.json 으로 최초 1회 백업."""
+    """사람이 수정한 카드 저장 (+ 즉시 자수 검사). 작가 원본은 card_NN_orig.json 으로 최초 1회 백업.
+    호수(week_label)는 형식이 틀리면 422 로 거부하고, 바뀌었으면 나머지 카드에도 반영한다 (2026-09-22)."""
     if current["state"] not in ("waiting_final_review", "done"):
         return JSONResponse({"error": "카드 수정은 카드 검토 대기(또는 완료) 상태에서만 가능합니다"}, status_code=409)
     p = _card_path(no)
@@ -618,7 +668,16 @@ async def put_card(no: str, request: Request):
         return JSONResponse({"error": "JSON 본문이 필요합니다"}, status_code=400)
     if not isinstance(card, dict) or not card.get("title") or not isinstance(card.get("points"), list):
         return JSONResponse({"error": "카드 형식이 아닙니다 (title, points 필수)"}, status_code=400)
+    # 호수(week_label)는 전 카드가 공유하는 값 — 형식이 틀리면 저장하지 않는다 (다른 자수 문제는 저장 후 보고).
+    # 아래에서 나머지 카드에도 퍼뜨리므로, 틀린 값이 전 카드로 번지는 것을 여기서 막는다 (2026-09-22 추가).
+    new_label = str(card.get("week_label") or "").strip()
+    card["week_label"] = new_label
+    if not WEEK_LABEL_RE.fullmatch(new_label):
+        return JSONResponse({"ok": False, "saved": False, "quick_problems": [
+            f"week_label은 'M월 N주' 형식(월 1~12, 주 1~6) — 입력값 \"{new_label}\" · 저장하지 않음"]},
+            status_code=422)
 
+    old_label = str((load_json(p.parent, p.name, None) or {}).get("week_label") or "")
     orig = p.parent / f"card_{no}_orig.json"
     if not orig.exists():
         shutil.copy(p, orig)   # 작가 원본 보존 (최초 사람 수정 시 1회)
@@ -626,7 +685,25 @@ async def put_card(no: str, request: Request):
     problems = card_service.quick_validate(card)
     logger = make_logger(run_dir_path(), on_log)
     logger("orchestrator", f"사람이 card_{no} 수정 저장 (자수 검사 {'통과' if not problems else f'불합격 {len(problems)}건'})")
-    return {"ok": not problems, "quick_problems": problems}
+
+    # 호수는 전 카드 공통 — 한 카드에서 바꾸면 나머지 카드에도 반영한다 (2026-09-22 추가).
+    # week_label 만 바꾸고 _orig 백업은 만들지 않는다 (발행 때의 호수 통일과 같은 시스템 작업).
+    # 사람이 정한 값이므로 발행 때 자동 계산 대신 이 값을 쓴다 (week_label_manual → publish_week_label).
+    applied = 0
+    if new_label != old_label:
+        for other in list_card_numbers(p.parent):
+            q = p.parent / f"card_{other}.json"
+            data = load_json(p.parent, q.name, None)
+            if other == no or not isinstance(data, dict) or data.get("week_label") == new_label:
+                continue
+            data["week_label"] = new_label
+            q.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            applied += 1
+        current["week_label_manual"] = True
+        write_state_file()
+        logger("orchestrator", f"호수 변경: '{old_label}' → '{new_label}' — 사람이 card_{no} 에서 수정, "
+                               f"카드 {applied + 1}건에 통일 (발행 때 이 값을 씀)")
+    return {"ok": not problems, "quick_problems": problems, "week_label_applied": applied}
 
 
 @app.post("/run/cards/{no}/check")

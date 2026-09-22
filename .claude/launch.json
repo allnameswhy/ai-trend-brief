@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\Users\\User\\ai-trend-brief\\.venv\\Scripts\\python.exe",
       "runtimeArgs": ["-m", "uvicorn", "backend.main:app", "--port", "8000"],
       "port": 8000
+    },
+    {
+      "name": "dashboard-test",
+      "runtimeExecutable": "C:\\Users\\User\\ai-trend-brief\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["tools/test_dashboard_fixture.py", "serve", "--port", "8001"],
+      "port": 8001
     }
   ]
 }

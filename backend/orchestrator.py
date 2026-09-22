@@ -31,6 +31,7 @@
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -187,9 +188,23 @@ async def run_agent(agent_name: str, task: str, run_dir: Path, on_log) -> None:
                 on_log(agent_name, f"완료 (턴 {message.num_turns}회)", "log")
 
 
+# 호수 표기 형식 'M월 N주' — 월 1~12, 주 1~6 (일요일 시작 달력에서 한 달은 최대 6주에 걸친다).
+# 대시보드의 호수 수동 입력 검증(main.py)과 render_cards 의 방어 검사가 함께 쓴다 (2026-09-22 추가).
+# ※ tools/build_cardnews.py 는 검토자 에이전트·터미널이 단독 실행하는 도구라 같은 식을 따로 둔다 — 바꿀 땐 두 곳 함께.
+WEEK_LABEL_RE = re.compile(r"(1[0-2]|[1-9])월 [1-6]주")
+
+
 def month_week_label(now: datetime) -> str:
-    """발행 주차 표기 — 그 달의 몇 번째 7일 구간 (예: '8월 1주'). 표지·카드 호수의 단일 원천."""
-    return f"{now.month}월 {(now.day - 1) // 7 + 1}주"
+    """발행 주차 표기 — 달력 기준 (예: '9월 4주'). 표지·카드 호수 자동 계산의 단일 원천.
+    규칙 (2026-09-22 변경 — 종전 '1일부터 7일씩 끊기'는 달력 감각과 어긋나 교체):
+      · 한 주는 일요일에 시작한다.
+      · 그 달 1일이 든 주가 무조건 1주 (1일이 토요일이면 1주는 그 하루뿐).
+      · '월'은 항상 그 날짜의 월 — 주가 달을 걸쳐도 앞달 5주 / 다음달 1주로 갈라 센다.
+    계산: 1일의 요일(일=0 … 토=6)만큼 달력 첫 줄에 빈칸이 있다고 보고 (일 + 빈칸 - 1) // 7 + 1.
+    파이썬 weekday()는 월=0 … 일=6 이라 (weekday() + 1) % 7 로 일=0 기준으로 바꾼다.
+    예: 2026-09-21(월) → '9월 4주', 2026-11-01(일) → '11월 1주', 2026-08-30(일) → '8월 6주'."""
+    first_wd = (now.replace(day=1).weekday() + 1) % 7
+    return f"{now.month}월 {(now.day + first_wd - 1) // 7 + 1}주"
 
 
 def new_run_dir(output_base: Path | None = None) -> Path:
@@ -283,7 +298,7 @@ async def run_phase2(run_dir: Path, logger, resume: bool = False) -> int:
 
     # 카드 규격은 writer.md 에 싣지 않고 지시문에만 첨부한다 (단일 원천: card_schema.md)
     card_spec = (PROJECT_ROOT / "tools" / "cardnews" / "card_schema.md").read_text(encoding="utf-8")
-    week_label = month_week_label(datetime.now())   # 집필 시점 주차 — 발행 때 render_cards 가 다시 통일함
+    week_label = month_week_label(datetime.now())   # 집필 시점 주차 — 발행 때 render_cards 가 확정 호수(사람 수정값 또는 자동)로 다시 통일함
 
     for idx, item in enumerate(items, start=1):
         # 재개 실행이면 이미 작성된 카드는 작가를 부르지 않는다 (비용 절약).
@@ -422,13 +437,15 @@ async def run_pipeline(on_log=None, selected_from: str | None = None,
     return result
 
 
-def render_cards(run_dir: Path, count: int, on_log, scale: int = 2) -> None:
+def render_cards(run_dir: Path, count: int, on_log, scale: int = 2, week_label: str | None = None) -> None:
     """확정된 카드(card_01 ~ card_NN)와 발간 헤더·표지를 PNG로 렌더한다 — 오케스트레이터가 직접 실행.
     scale — 렌더 배율(2=원본 2160px 기본, 1=절반 1080px). 절반도 PNG 축소가 아니라 HTML에서
     직접 렌더한다 (2026-08-05 추가 — 대시보드 발행 버튼에서 크기 선택).
     렌더는 판단이 필요 없는 결정적 작업이라 에이전트를 쓰지 않는다 (2026-07-20 변경).
     호수는 발행(렌더) 시점에 다시 계산해 헤더·표지와 전 카드에 통일한다 (2026-07-30 변경 —
     집필과 발행이 주가 다르면 카드 알약·헤더/표지 표시가 어긋나므로, 발행일 기준으로 맞춘다).
+    week_label 을 주면 그 값으로 통일한다 (2026-09-22 추가 — 사람이 대시보드 카드 편집 화면의 호수 칸을 고쳐
+    저장했거나 재발행일 때 서버(main.py publish_week_label)가 정해서 넘김). 없거나 빈 값이면 자동 계산(CLI 경로).
     표지 cover.png(1080×1240)는 호수와 목차(카테고리별 카드 title)를 담고, build_cardnews --cover 가
     run 폴더의 card_NN.json 을 직접 읽어 목차를 채운다 (2026-08-05 추가 — 에이전트 호출 없음).
     헤더(1080×380)·표지 둘 다 만들어 두고, 어느 것을 카드 묶음 맨 위에 쓸지는 사람이 발송 때 고른다.
@@ -438,8 +455,12 @@ def render_cards(run_dir: Path, count: int, on_log, scale: int = 2) -> None:
     ※ 동기 함수 — 서버(main.py)에서는 asyncio.to_thread 로 감싸 이벤트 루프를 막지 않는다."""
     tool = PROJECT_ROOT / "tools" / "build_cardnews.py"
 
-    # ① 발행 시점 호수 계산 + 카드 JSON 통일 (card_NN_orig.json 등 백업은 건드리지 않음)
-    label = month_week_label(datetime.now())
+    # ① 호수 확정 + 카드 JSON 통일 (card_NN_orig.json 등 백업은 건드리지 않음)
+    #    서버가 넘긴 값이 있으면 그 값, 없으면 발행 시점 자동 계산. 형식은 카드 JSON 을 쓰기 전에 확인한다 —
+    #    카드 렌더(build_one)는 호수 형식을 검사하지 않아, 틀린 값이 그대로 카드에 기록·렌더될 수 있기 때문.
+    label = (week_label or "").strip() or month_week_label(datetime.now())
+    if not WEEK_LABEL_RE.fullmatch(label):
+        raise ValueError(f"호수 형식이 아닙니다: '{label}' — 'M월 N주'(월 1~12, 주 1~6)")
     updated = 0
     for idx in range(1, count + 1):
         card_file = run_dir / f"card_{idx:02d}.json"

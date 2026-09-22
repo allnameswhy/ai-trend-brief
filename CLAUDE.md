@@ -57,6 +57,8 @@ docs/                    # gitignore 대상 — 기존 발간물 원본, 핸드�
    - `test_writer_single.py` — 기사 1건 작가 테스트(카드 작성까지)
    - `test_writer_review_single.py` — 기사 1건 전 구간 테스트(작가 → 검토 → 반려 시 재작성 1회 → PNG 렌더)
    - `test_research_edit.py` — 조사자→편집장 구간 테스트
+   - `test_dashboard_fixture.py make` / `serve` — 실제 run의 카드 복사본(픽스처)으로 8001 포트에 대시보드를 띄워
+     편집·저장·발행 구간을 토큰 0으로 검증 (launch.json `dashboard-test`). 테스트 서버에서 [1단계 실행]·[초기화] 금지
 
 ## TODO 관리 방식
 `TODO.md`는 시급도(최대한 빨리 / 되도록 이번 주까지 / 차순위 / 차차순위 / 나중에)를 heading으로 하고,

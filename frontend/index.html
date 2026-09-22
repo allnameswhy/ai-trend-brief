@@ -373,6 +373,7 @@
     if (ST.state === 'waiting_selection' && prev !== 'waiting_selection') loadCandidates();
     const cardStates = ['waiting_final_review','rendering','done'];
     if (showCards && (!cardStates.includes(prev) || (ST.state === 'done' && prev === 'rendering'))) loadCards();
+    updateWeekHint();
   }
 
   function handleEvent(ev){
@@ -380,6 +381,7 @@
       addConsoleLine({type:'state', ts:ev.ts, agent:'orchestrator',
                       message:'상태 → ' + (STATE_LABEL[ev.state] || ev.state)});
       applyState({state:ev.state, run_dir:ev.run_dir, cards:ev.cards, error:ev.error, resume:ev.resume});
+      if (ev.state === 'done') refreshState();   // 발행 뒤 '발행 시 적용' 호수 안내를 최신으로
       return;
     }
     if (ev.agent && ev.agent !== 'orchestrator') activeAgent = ev.agent;
@@ -571,11 +573,32 @@
       fs.querySelector('legend').firstChild.textContent = '불릿 ' + (i + 1) + ' ';
     });
   }
+  // ── 호수(week_label) — 카드 편집 폼의 입력 칸. 전 카드 공유 값: 저장하면 서버가 나머지 카드에도 반영 (2026-09-22) ──
+  const WEEK_REASON = {manual: '직접 정한 값', saved: '지난 발행 값', auto: '오늘 기준 자동 계산'};
+  function normWeek(s){   // "9월4주" · "9 월 4 주" → "9월 4주" (형식 판정은 서버 WEEK_LABEL_RE 가 한다)
+    const m = (s || '').trim().match(/^(\d{1,2})\s*월\s*(\d)\s*주$/);
+    return m ? Number(m[1]) + '월 ' + m[2] + '주' : (s || '').trim();
+  }
+  function updateWeekHint(){   // 발행 때 실제로 찍힐 호수 — 서버 publish_week_label 의 판단을 그대로 보여 준다
+    const h = $('f-weekHint');
+    if (!h) return;
+    if (!ST.week_label_publish){ h.textContent = ''; return; }
+    let t = '발행 시 적용: ' + ST.week_label_publish + ' (' + (WEEK_REASON[ST.week_label_reason] || '') + ')';
+    if (ST.week_label_reason !== 'auto' && ST.week_label_auto && ST.week_label_auto !== ST.week_label_publish)
+      t += ' · 오늘 기준 자동 계산: ' + ST.week_label_auto;
+    if (ST.week_label_reason === 'auto') t += ' — 바꾸려면 위 호수 칸을 고쳐 [저장 + 재검사]';
+    h.textContent = t;
+  }
+
   function buildForm(card){
     const f = $('editForm'); f.innerHTML = '';
     f.dataset.category = card.category || '';
     f.dataset.no = card.article_no || currentCardNo;
-    f.dataset.week = card.week_label || '';
+    const wk = el('input', '', card.week_label); wk.id = 'f-week'; wk.placeholder = '9월 4주';
+    f.appendChild(labeled('호수 (M월 N주 — 저장하면 전 카드에 함께 적용)', wk));
+    const wh = document.createElement('div'); wh.id = 'f-weekHint'; wh.className = 'hint'; wh.style.marginTop = '4px';
+    f.appendChild(wh);
+    updateWeekHint();
     const t = el('input', '', card.title); t.id = 'f-title';
     f.appendChild(labeled('제목 (환산 17자, 한 줄)', t));
     const sh = el('textarea', '', card.subhead); sh.id = 'f-subhead';
@@ -614,7 +637,7 @@
       if (pt.pre || pt.key) points.push(pt);
     });
     return {
-      category: f.dataset.category, article_no: f.dataset.no, week_label: f.dataset.week,
+      category: f.dataset.category, article_no: f.dataset.no, week_label: normWeek($('f-week').value),
       title: $('f-title').value.trim(), subhead: $('f-subhead').value.trim(),
       points: points,
       source: [$('f-src0').value.trim(), $('f-src1').value.trim(), $('f-src2').value.trim()],
@@ -627,8 +650,16 @@
     res.className = 'res run'; res.textContent = '저장 중…';
     let r = await fetch('/run/cards/' + currentCardNo, {method:'PUT',
       headers:{'Content-Type':'application/json'}, body:JSON.stringify(card)});
+    if (r.status === 422){   // 호수 형식 오류 — 서버가 저장하지 않음 (전 카드 공유 값이라 틀린 값을 퍼뜨리지 않음)
+      const bad = await r.json();
+      res.className = 'res bad';
+      res.innerHTML = '<strong>저장하지 않음</strong><br>' + (bad.quick_problems || [bad.error || '']).map(esc).join('<br>');
+      return;
+    }
     if (!r.ok){ await alertResp(r); res.className = 'res bad'; res.textContent = '저장 실패 — 로그 확인'; return; }
     const quick = await r.json();
+    if ($('f-week')) $('f-week').value = card.week_label;   // "9월4주" → "9월 4주" 로 정리된 값을 그대로 보여 줌
+    refreshState();                                          // 호수가 바뀌었으면 '발행 시 적용' 안내 갱신
     refreshPreview();
     const item = (cardsData.cards || []).find(c => c.no === currentCardNo);
     if (item){ item.title = card.title; item.category = card.category; renderCardList(); }
@@ -648,9 +679,18 @@
     }
   };
   $('btnPublish').onclick = async () => {
+    await refreshState();                       // 누르는 순간의 호수로 (자정·주 경계를 넘긴 채 열어 둔 탭 대비)
+    if ($('btnPublish').disabled) return;
     const scale = Number($('pubScale').value);
     const sizeLabel = scale === 2 ? '원본 크기 (2160px)' : '1/2 크기 (1080px)';
-    if (!confirm('모든 카드를 PNG 로 렌더합니다 (발행) — ' + sizeLabel + '.\n진행할까요?\n※ 발송은 하지 않습니다 — PNG 는 스티비 화면에서 직접 업로드.')) return;
+    const label = ST.week_label_publish || '', auto = ST.week_label_auto || '';
+    let msg = '모든 카드를 PNG 로 렌더합니다 (발행) — 호수 「' + label + '」 (' + (WEEK_REASON[ST.week_label_reason] || '') + '), ' + sizeLabel + '.';
+    if (label && auto && label !== auto)
+      msg += '\n※ 오늘 기준 자동 계산값은 「' + auto + '」입니다. 바꾸려면 카드 편집 화면의 호수 칸에서 수정·저장하세요.';
+    if (label && auto && label.split('월')[0] !== auto.split('월')[0])
+      msg += '\n※ 호수의 월이 오늘과 다릅니다 — 표지의 연도는 오늘 날짜 기준으로 찍힙니다.';
+    msg += '\n진행할까요?\n※ 발송은 하지 않습니다 — PNG 는 스티비 화면에서 직접 업로드.';
+    if (!confirm(msg)) return;
     const r = await fetch('/publish', {method:'POST',
       headers:{'Content-Type':'application/json'}, body:JSON.stringify({scale})});
     if (!r.ok) alertResp(r);
