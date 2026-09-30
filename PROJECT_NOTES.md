@@ -73,6 +73,17 @@
 - **스케줄링**: 수동 트리거만(대시보드 버튼·CLI) — 자동화는 정식 운영 시 검토
 - **테스트**: 산출물은 `data/tests/<ts>/`(run과 같은 구조) · 부분 검증은 `tools/test_writer_single.py`(작가) / `test_writer_review_single.py`(작가→검토→렌더)
 
+**작업 위치 분리 — 코드는 클라우드, 발간 run은 로컬** (2026-09-30 결정):
+
+- **Claude Code 클라우드 세션**(claude.ai/code)은 코드·문서 수정용. GitHub `main`에서 받아 작업하고 브랜치로 올림 → 로컬은 `git pull`
+- **실제 발간 run은 로컬 PC**(대시보드·Edge 렌더·`data/runs/`·`.env`가 모두 로컬에만 있음 — gitignore 대상은 클라우드에 안 감)
+- 클라우드에서도 렌더·기계 검사·테스트 하네스가 돌도록 브라우저 탐색을 OS 무관하게 통일(`tools/build_cardnews.py find_browser()`:
+  `CARDNEWS_BROWSER` 환경변수 → Windows Edge → PATH의 Chromium/Chrome → Playwright 설치 Chromium). **브라우저가 없으면 기계 검사는
+  불합격**(예전엔 자수 검사만으로 조용히 통과 — 폐지). Linux에선 `--no-sandbox --disable-dev-shm-usage` 자동 추가
+- 클라우드 환경 준비는 `scripts/cloud_setup.sh`(환경 설정의 Setup script 칸에 붙여 넣기) — 한글 폰트·의존성·Chromium 설치.
+  네트워크 접근은 Custom으로 `cdn.jsdelivr.net`(Pretendard) + Playwright 다운로드 주소 허용, 환경변수 `TZ=Asia/Seoul`
+- 격주 자동 실행(클라우드 routine)은 현재 구조상 불가(대시보드 관문·로컬 산출물) — 규칙 2(자동 발송 금지)와 함께 정식 운영 시 재검토
+
 ---
 
 ## 3. 에이전트별 현재 동작과 남은 과제

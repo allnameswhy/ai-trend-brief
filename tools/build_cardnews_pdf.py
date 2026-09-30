@@ -39,7 +39,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_cardnews import find_edge, edge_user_data_dir  # noqa: E402  (Edge 탐색 로직 재사용)
+from build_cardnews import (  # noqa: E402  (브라우저 탐색·플래그 로직 재사용)
+    find_browser, browser_flags, edge_user_data_dir, NO_BROWSER_MSG)
 
 # 카드·표지는 1080×1240 CSS px. 96dpi 기준 인치로 환산해 페이지 크기로 준다.
 CARD_PAGE_IN = (1080 / 96, 1240 / 96)   # 11.25 × 12.9167 in
@@ -89,7 +90,7 @@ def render_backdrop(edge: str, udd: str) -> str | None:
         html = Path(td) / "backdrop.html"
         png = Path(td) / "backdrop.png"
         html.write_text(BACKDROP_HTML, encoding="utf-8")
-        cmd = [edge, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+        cmd = [edge, "--headless=new", "--disable-gpu", *browser_flags(), "--hide-scrollbars",
                "--force-device-scale-factor=1", "--window-size=1080,1240",
                f"--user-data-dir={udd}", f"--screenshot={png.resolve()}", html.resolve().as_uri()]
         subprocess.run(cmd, capture_output=True, timeout=120)
@@ -184,6 +185,7 @@ def html_to_pdf(edge: str, html: Path, pdf_out: Path, page_in: tuple[float, floa
             edge,
             "--headless=new",
             "--disable-gpu",
+            *browser_flags(),
             "--hide-scrollbars",
             "--no-pdf-header-footer",        # 머리말(제목)·꼬리말(URL·쪽번호) 제거
             "--virtual-time-budget=6000",    # 웹폰트(Pretendard) 로드 대기
@@ -225,9 +227,9 @@ def main() -> int:
         print(f"인쇄할 HTML이 없습니다: {pub}", file=sys.stderr)
         return 1
 
-    edge = find_edge()
+    edge = find_browser()
     if not edge:
-        print("Edge를 찾지 못했습니다. PDF를 만들 수 없습니다.", file=sys.stderr)
+        print(f"PDF를 만들 수 없습니다: {NO_BROWSER_MSG}", file=sys.stderr)
         return 1
 
     try:

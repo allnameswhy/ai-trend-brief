@@ -27,6 +27,7 @@ tools/build_cardnews.py  # 카드·헤더·표지 렌더(HTML→PNG)와 규격 �
 tools/build_cardnews_pdf.py  # publish/ HTML을 Edge 인쇄로 병합해 열람용 벡터 PDF 생성
 tools/cardnews/          # card_schema.md(카드 규격 단일 원천) · card_template.html.j2 · card_v2_sample.json · header_template.html.j2 · cover_template.html.j2 · nrf-symbol.png
 tools/test_*.py          # 부분 테스트 하네스 (아래 규칙 8)
+scripts/cloud_setup.sh   # Claude Code 클라우드 세션 환경 준비(폰트·의존성·Chromium). 코드 작업은 클라우드, 발간 run은 로컬 (PROJECT_NOTES 2장)
 data/runs/<timestamp>/   # 실행마다 생성: candidates.json → selected.json(+dropped.json+screened.json) → item_input_NN.json → card_NN.json → review.md. 발행 산출물은 publish/ 하위. 대시보드 run은 state.json·selected_editor.json·card_NN_orig.json 추가
 data/tests/<timestamp>/  # 테스트 산출물 (run과 같은 구조, 규칙 8)
 logs/run_<timestamp>.log # 실행별 작업 로그 (PROJECT_NOTES 2장)

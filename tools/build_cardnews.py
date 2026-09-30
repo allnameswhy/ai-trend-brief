@@ -19,8 +19,10 @@
 import argparse
 import base64
 import contextlib
+import glob
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -41,10 +43,27 @@ NRF_SYMBOL_PATH = HERE / "cardnews" / "nrf-symbol.png"
 # autoescape=True: 기사 제목 등에 <, & 같은 문자가 있어도 자동으로 무해하게 처리됨
 JINJA_ENV = Environment(loader=FileSystemLoader(HERE / "cardnews"), autoescape=True)
 
+# ── 렌더용 브라우저 탐색 (2026-09-30 클라우드 세션 대응) ──────────────
+# Edge·Chrome·Chromium 은 같은 엔진이라 명령 인자가 동일하다. 탐색 순서:
+#   1. 환경변수 CARDNEWS_BROWSER (실행 파일 경로 직접 지정)
+#   2. Windows Edge 고정 경로 (로컬 발간 PC — 기존 동작 그대로)
+#   3. PATH 에 있는 chromium / google-chrome / microsoft-edge (Linux 서버)
+#   4. Playwright 가 내려받은 Chromium (클라우드 세션: scripts/cloud_setup.sh 가 /opt/ms-playwright 에 설치)
 EDGE_CANDIDATES = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 ]
+BROWSER_NAMES = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable",
+                 "microsoft-edge", "microsoft-edge-stable", "msedge"]
+PLAYWRIGHT_GLOBS = [
+    "/opt/ms-playwright/chromium-*/chrome-linux*/chrome",
+    str(Path.home() / ".cache/ms-playwright/chromium-*/chrome-linux*/chrome"),
+]
+# Linux 에서 root 로 돌 때(컨테이너·클라우드 VM) 샌드박스 없이는 Chromium 이 바로 죽는다.
+# /dev/shm 이 작은 컨테이너에서 렌더가 멈추는 것도 함께 막는다. Windows 에는 붙이지 않는다(기존 동작 보존).
+LINUX_EXTRA_FLAGS = ["--no-sandbox", "--disable-dev-shm-usage"]
+NO_BROWSER_MSG = ("렌더용 브라우저(Edge/Chrome/Chromium)를 찾지 못함 — "
+                  "CARDNEWS_BROWSER 환경변수로 경로를 지정하거나 scripts/cloud_setup.sh 참고")
 
 # 카테고리별 강조색 (원 디자인 accentMap과 동일)
 ACCENT_MAP = {"정책": "#3E6DE8", "기술": "#0EA79E", "윤리": "#7C64EE"}
@@ -149,11 +168,31 @@ def render_cover_html(week_label: str, toc: list) -> str:
     return JINJA_ENV.get_template(COVER_TEMPLATE_NAME).render(context)
 
 
-def find_edge() -> str | None:
+def find_browser() -> str | None:
+    """렌더용 Chromium 계열 브라우저 실행 파일을 찾는다 (탐색 순서는 위 주석). 없으면 None."""
+    env = os.environ.get("CARDNEWS_BROWSER")
+    if env and Path(env).exists():
+        return env
     for p in EDGE_CANDIDATES:
         if Path(p).exists():
             return p
+    for name in BROWSER_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    for pattern in PLAYWRIGHT_GLOBS:
+        hits = sorted(glob.glob(pattern))
+        if hits:
+            return hits[-1]          # 여러 버전이면 최신(정렬상 마지막)
     return None
+
+
+find_edge = find_browser        # 옛 이름 호환 (build_cardnews_pdf.py 등)
+
+
+def browser_flags() -> list[str]:
+    """OS 에 따라 공통으로 붙일 추가 플래그 (Windows 는 없음)."""
+    return [] if sys.platform == "win32" else LINUX_EXTRA_FLAGS
 
 
 # ── 넘침 검사 (--check) ────────────────────────────────────────
@@ -197,8 +236,8 @@ def edge_user_data_dir():
 
 
 def check_layout(card: dict) -> dict | None:
-    """카드를 실제로 렌더해 레이아웃 수치를 잰다. Edge가 없으면 None."""
-    edge = find_edge()
+    """카드를 실제로 렌더해 레이아웃 수치를 잰다. 브라우저가 없거나 측정에 실패하면 None."""
+    edge = find_browser()
     if not edge:
         return None
     html = render_html(card).replace("</body>", CHECK_JS + "</body>")
@@ -206,7 +245,7 @@ def check_layout(card: dict) -> dict | None:
         page = Path(udd) / "check.html"
         page.write_text(html, encoding="utf-8")
         out = subprocess.run(
-            [edge, "--headless=new", "--disable-gpu", "--virtual-time-budget=6000",
+            [edge, "--headless=new", "--disable-gpu", *browser_flags(), "--virtual-time-budget=6000",
              f"--user-data-dir={udd}", "--dump-dom", page.as_uri()],
             capture_output=True, timeout=90)
     m = re.search(rb"<title>CARDCHECK(.*?)</title>", out.stdout, re.S)
@@ -315,7 +354,10 @@ def card_problems(card_path: Path) -> list[str]:
         return problems          # 자수부터 맞춰야 실측이 의미 있으므로 여기서 반환
     r = check_layout(card)
     if r is None:
-        return []                # Edge 없음 — 자수 검사 통과로 갈음
+        # 예전엔 '자수 검사 통과로 갈음'했지만, 브라우저 없는 환경(클라우드 세션 등)에서 넘침 검사가
+        # 조용히 빠지는 것을 막기 위해 불합격으로 낸다 (2026-09-30). 로컬 발간 PC는 Edge 가 항상 있다.
+        reason = NO_BROWSER_MSG if not find_browser() else "브라우저가 측정값을 돌려주지 않음 (렌더 실패)"
+        return [f"렌더 실측 불가 — {reason}"]
     if r["bottom_overflow"] > 0:
         px = r["bottom_overflow"]
         # 문장 한 줄 36px(보조 한 줄 44px), 한 줄 ≈ 환산 42자 — card_schema.md 실측값과 동일
@@ -341,15 +383,16 @@ def run_check(card_path: Path) -> int:
 
 def export_png(html_path: Path, png_path: Path, size: tuple[int, int] = (1080, 1240),
                scale: int = 2) -> bool:
-    edge = find_edge()
+    edge = find_browser()
     if not edge:
-        print("  ! Edge를 찾지 못해 PNG는 건너뜀. HTML만 생성됨.", file=sys.stderr)
+        print(f"  ! PNG 건너뜀 (HTML만 생성됨): {NO_BROWSER_MSG}", file=sys.stderr)
         return False
     with edge_user_data_dir() as udd:
         cmd = [
             edge,
             "--headless=new",
             "--disable-gpu",
+            *browser_flags(),
             "--hide-scrollbars",
             # 렌더 배율 — 2: 원본(카드·표지 2160×2480, 헤더 2160×760), 1: 절반(1080×1240, 1080×380).
             # 절반 크기도 PNG 축소가 아니라 HTML에서 직접 렌더한다 (글자 선명도 우수)
